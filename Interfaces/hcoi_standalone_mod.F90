@@ -1353,11 +1353,9 @@ CONTAINS
 !       hcox\_soilnox\_mod.F90). This variable should be provided in section 
 !       soil NOx extension settings (DRYCOEFF: xx.x/xx.x/xx.x/...). It is
 !       read in hcox\_soilnox\_mod.F90.
-! \item DAYS_BTW_M: days between midmonths (used in hcox\_megan\_mod.F). 
+! \item DAYS\_BTW\_M: days between midmonths (used in hcox\_megan\_mod.F). 
 !       This variable becomes defined and updated within this module.
 ! \end{itemize}
-!\\
-!\\
 ! !INTERFACE:
 !
   SUBROUTINE ExtOpt_SetPointers ( am_I_Root, RC )
