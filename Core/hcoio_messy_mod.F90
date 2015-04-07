@@ -12,13 +12,12 @@
 ! rectilinear (regular lon-lat) grids but can be extended to support curvilinear 
 ! grids.
 !\\
-! !REFERENCES: 
+! REFERENCES: 
 ! \begin{itemize}
 ! \item Joeckel, P. Technical note: Recursive rediscretisation of geo-
 ! scientific data in the Modular Earth Submodel System (MESSy), ACP, 6,
 ! 3557--3562, 2006.
 ! \end{itemize}
-!\\
 ! !INTERFACE: 
 !
 MODULE HCOIO_MESSY_MOD
