@@ -1677,30 +1677,33 @@ CONTAINS
 !
   SUBROUTINE Diagn_Get( am_I_Root, EndOfIntvOnly, DgnCont, &
                         FLAG,      RC,            cName,   &
-                        cID,       AutoFill,      COL       )
+                        cID,       AutoFill,      COL,     &
+                        SkipZeroCount                       )
 !
 ! !INPUT PARAMETERS::
 !
-    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
-    LOGICAL,          INTENT(IN   )           :: EndOfIntvOnly  ! End of 
-                                                                ! interval 
-                                                                ! only? 
-    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! container name
-    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! container ID
-    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 0=no; 1=yes; 
-                                                                ! -1=either
-    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr. 
+    LOGICAL,          INTENT(IN   )           :: am_I_Root       ! Root CPU?
+    LOGICAL,          INTENT(IN   )           :: EndOfIntvOnly   ! End of 
+                                                                 ! interval 
+                                                                 ! only? 
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName           ! container name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID             ! container ID
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill        ! 0=no; 1=yes; 
+                                                                 ! -1=either
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL             ! Collection Nr. 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: SkipZeroCount   ! Skip if counter
+                                                                 ! is zero 
 !
 ! !OUTPUT PARAMETERS:
 !
 
-    TYPE(DiagnCont),  POINTER                 :: DgnCont        ! Return 
-                                                                ! container
+    TYPE(DiagnCont),  POINTER                 :: DgnCont         ! Return 
+                                                                 ! container
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    INTEGER,          INTENT(INOUT)           :: FLAG           ! Return flag
-    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+    INTEGER,          INTENT(INOUT)           :: FLAG            ! Return flag
+    INTEGER,          INTENT(INOUT)           :: RC              ! Return code 
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
@@ -1714,6 +1717,7 @@ CONTAINS
     INTEGER                        :: MinResetFlag
     INTEGER                        :: PS, AF
     LOGICAL                        :: FOUND, CF
+    LOGICAL                        :: SKIPZERO 
 
     !======================================================================
     ! Diagn_Get begins here!
@@ -1731,6 +1735,10 @@ CONTAINS
     ! Set AutoFill flag
     AF = -1
     IF ( PRESENT(AutoFill  ) ) AF = AutoFill
+
+    ! Check if diagnostics with counter = 0 shall be skipped
+    SKIPZERO = .FALSE.
+    IF ( PRESENT(SkipZeroCount) ) SKIPZERO = SkipZeroCount
 
     ! Get minimum reset flag for current time. Set reset flag to -1 if
     ! EndOFIntvOnly flag is disabled. This will make sure that all 
@@ -1760,7 +1768,7 @@ CONTAINS
           DgnCont => NULL()
        ELSE
           ! Don't consider container if counter is zero. 
-          IF ( DgnCont%Counter == 0 ) THEN
+          IF ( SKIPZERO .AND. DgnCont%Counter == 0 ) THEN
              DgnCont => NULL()
           ENDIF
        ENDIF
@@ -1770,14 +1778,14 @@ CONTAINS
    
     ! If container id is given, search for diagnostics with 
     ! the given container ID.
-    IF ( PRESENT( cID ) ) THEN
+    IF ( PRESENT( cID ) .AND. .NOT. CF ) THEN
        CALL DiagnCont_Find( cID, -1, -1, -1, -1, '', &
                             AF, FOUND, DgnCont, COL=PS )
        IF ( .NOT. FOUND ) THEN
           DgnCont => NULL()
        ELSE
           ! Don't consider container if counter is zero. 
-          IF ( DgnCont%Counter == 0 ) THEN
+          IF ( SKIPZERO .AND. DgnCont%Counter == 0 ) THEN
              DgnCont => NULL()
           ENDIF
        ENDIF
@@ -1793,23 +1801,16 @@ CONTAINS
        ELSE
           DgnCont => DgnCont%NextCont
        ENDIF
-       DO WHILE ( ASSOCIATED ( DgnCont ) ) 
-          IF ( DgnCont%Counter > 0 ) EXIT 
-          DgnCont => DgnCont%NextCont
-       ENDDO
-  
-       ! If EndOfIntvOnly flag is enabled, make sure that the
-       ! selected container is at the end of its interval.
-       IF ( EndOfIntvOnly ) THEN
-          ! If MinResetFlag > 0, search for first container with a
-          ! ResetFlag equal or larger than MinResetFlag and where
-          ! updates since last output (counter) is not zero.
-          DO WHILE ( ASSOCIATED ( DgnCont ) ) 
-             IF ( DgnCont%Counter > 0 ) EXIT
+       DO WHILE ( ASSOCIATED ( DgnCont ) )
+          ! Skip zero counters
+          IF ( SKIPZERO .AND. DgnCont%Counter <= 0 ) THEN
              DgnCont => DgnCont%NextCont
-          ENDDO
-   
-       ENDIF ! EndOfIntvOnly
+             CYCLE
+          ENDIF
+
+          ! Exit if we reach this loop here
+          EXIT 
+       ENDDO
     ENDIF
 
     ! Before returning container, make sure its data is ready for output.
@@ -2289,6 +2290,7 @@ CONTAINS
 ! !USES:
 !
     USE HCO_State_Mod, ONLY : HCO_State
+    USE HCO_Arr_Mod,   ONLY : HCO_ArrAssert
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
@@ -2327,15 +2329,6 @@ CONTAINS
     IF ( DgnCont%DtaIsPtr    ) RETURN
 
     !-----------------------------------------------------------------------
-    ! Return w/ error if counter is still zero. This should not happen!
-    !-----------------------------------------------------------------------
-    IF ( DgnCont%Counter == 0 ) THEN
-       MSG = 'Counter is zero : ' // TRIM(DgnCont%cName)
-       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
-       RETURN
-    ENDIF
-
-    !-----------------------------------------------------------------------
     ! Get pointer to this collection
     !-----------------------------------------------------------------------
     CALL DiagnCollection_Find( DgnCont%CollectionID, FOUND, RC, ThisColl=ThisColl )
@@ -2348,6 +2341,36 @@ CONTAINS
        CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
+
+    !-----------------------------------------------------------------------
+    ! Return zero array if counter is still zero 
+    !-----------------------------------------------------------------------
+    IF ( DgnCont%Counter == 0 ) THEN
+      
+       ! Make sure array is defined and zero
+       IF ( DgnCont%SpaceDim == 2 ) THEN
+          CALL HCO_ArrAssert( DgnCont%Arr2D, ThisColl%NX, &
+                              ThisColl%NY,   RC            ) 
+          IF ( RC /= HCO_SUCCESS ) RETURN 
+
+          ! Make sure it's zero
+          DgnCont%Arr2D%Val = 0.0_sp
+
+       ELSEIF ( DgnCont%SpaceDim == 3 ) THEN
+          CALL HCO_ArrAssert( DgnCont%Arr3D, ThisColl%NX, &
+                              ThisColl%NY,   ThisColl%NZ, RC ) 
+          IF ( RC /= HCO_SUCCESS ) RETURN 
+
+          ! Make sure it's zero
+          DgnCont%Arr3D%Val = 0.0_sp
+       ENDIF
+
+       ! Prompt warning
+       MSG = 'Diagnostics counter is zero - return empty array: ' // &
+             TRIM(DgnCont%cName)
+       CALL HCO_WARNING( MSG, RC, THISLOC=LOC, WARNLEV=1 )    
+       RETURN
+    ENDIF 
 
     !-----------------------------------------------------------------------
     ! Output data is calculated as: 
