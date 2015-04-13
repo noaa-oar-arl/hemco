@@ -87,6 +87,8 @@ MODULE HCOI_StandAlone_Mod
 !  20 Aug 2013 - C. Keller   - Initial version. 
 !  14 Jul 2014 - R. Yantosca - Now use F90 free-format indentation
 !  14 Jul 2014 - R. Yantosca - Cosmetic changes in ProTeX headers
+!  09 Apr 2015 - C. Keller   - Now accept comments and empty lines in
+!                              all input files.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -155,7 +157,7 @@ CONTAINS
 !
 ! !INPUT PARAMETERS:
 !
-    CHARACTER(LEN=255), INTENT(IN)  :: ConfigFile
+    CHARACTER(LEN=*), INTENT(IN)  :: ConfigFile
 !
 ! !REVISION HISTORY: 
 !  12 Sep 2013 - C. Keller    - Initial version 
@@ -176,7 +178,7 @@ CONTAINS
     am_I_Root = .TRUE.
 
     ! Initialize the HEMCO standalone
-    CALL HCOI_Sa_Init( am_I_Root, ConfigFile, RC )
+    CALL HCOI_Sa_Init( am_I_Root, TRIM(ConfigFile), RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        WRITE(*,*) 'Error in HCOI_SA_INIT'
        RETURN
@@ -219,7 +221,7 @@ CONTAINS
 ! !INPUT PARAMETERS:
 !
     LOGICAL,            INTENT(IN   ) :: am_I_Root  ! root CPU?
-    CHARACTER(LEN=255), INTENT(IN   ) :: ConfigFile ! Configuration file
+    CHARACTER(LEN=*),   INTENT(IN   ) :: ConfigFile ! Configuration file
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
@@ -248,7 +250,7 @@ CONTAINS
     ! sets the HEMCO error properties (verbose mode? log file name, 
     ! etc.) based upon the specifications in the configuration file.
     !=================================================================
-    CALL Config_ReadFile( am_I_Root, ConfigFile, 0, RC )
+    CALL Config_ReadFile( am_I_Root, TRIM(ConfigFile), 0, RC )
     IF( RC /= HCO_SUCCESS) RETURN 
 
     !=================================================================
@@ -265,7 +267,7 @@ CONTAINS
 
     !-----------------------------------------------------------------
     ! Extract species to use in HEMCO 
-    CALL Get_nnMatch( nnMatch, RC )
+    CALL Get_nnMatch( am_I_Root, nnMatch, RC )
     IF(RC /= HCO_SUCCESS) RETURN 
 
     !-----------------------------------------------------------------
@@ -367,7 +369,6 @@ CONTAINS
     USE HCO_Clock_Mod,         ONLY : HcoClock_Increase
     USE HCO_Driver_Mod,        ONLY : HCO_RUN
     USE HCOX_Driver_Mod,       ONLY : HCOX_RUN
-    USE HCOIO_Diagn_Mod,       ONLY : HCOIO_DIAGN_WRITEOUT
 !
 ! !INPUT PARAMETERS:
 !
@@ -438,7 +439,7 @@ CONTAINS
 100    FORMAT( 'Calculate emissions at ', i4,'-',i2.2,'-',i2.2,' ', &
                  i2.2,':',i2.2,':',i2.2 )
        CALL HCO_MSG(MSG)
-    
+ 
        ! ================================================================
        ! Reset all emission and deposition values
        ! ================================================================
@@ -518,7 +519,6 @@ CONTAINS
     USE HCO_Driver_Mod,    ONLY : HCO_Final
     USE HCOX_Driver_Mod,   ONLY : HCOX_Final
     USE HCO_State_Mod,     ONLY : HcoState_Final
-    USE HCOIO_Diagn_Mod,   ONLY : HCOIO_Diagn_WriteOut
 !
 ! !INPUT PARAMETERS:
 !
@@ -578,7 +578,8 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE Model_GetSpecies( nModelSpec,     ModelSpecNames,     &
+  SUBROUTINE Model_GetSpecies( am_I_Root,                          &
+                               nModelSpec,     ModelSpecNames,     &
                                ModelSpecIDs,   ModelSpecMW,        &
                                ModelSpecEmMW,  ModelSpecMolecRatio,&
                                ModelSpecK0,    ModelSpecCR,        &
@@ -591,6 +592,7 @@ CONTAINS
 !
 ! !OUTPUT PARAMETERS:
 !
+    LOGICAL,            INTENT(IN ) :: am_I_Root
     INTEGER,            INTENT(OUT) :: nModelSpec
     CHARACTER(LEN= 31), POINTER     :: ModelSpecNames(:)
     INTEGER,            POINTER     :: ModelSpecIDs  (:)
@@ -612,7 +614,7 @@ CONTAINS
 !
     INTEGER             :: I, N, LNG, LOW, UPP
     INTEGER             :: IU_FILE, IOS
-    LOGICAL             :: FOUND
+    LOGICAL             :: FOUND,   EOF
     CHARACTER(LEN=255)  :: MSG, LOC 
     CHARACTER(LEN=255)  :: MySpecFile 
     CHARACTER(LEN=2047) :: DUM
@@ -642,12 +644,14 @@ CONTAINS
     ENDIF
 
     ! Get number of species 
-    READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-    IF ( IOS /= 0 ) THEN
+    ! Get next valid line
+    CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+    IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
        MSG = 'Error 2 reading ' // TRIM(SpecFile)
        CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
+
     LNG = LEN(TRIM(DUM))
     LOW = NextCharPos ( TRIM(DUM), HCO_COL(), 1 )
     IF ( LOW < 0 .OR. LOW == LNG ) THEN
@@ -657,7 +661,7 @@ CONTAINS
     ENDIF
     LOW = LOW + 1
     READ ( DUM(LOW:LNG), * ) nModelSpec
-      
+
     ! Allocate species arrays
     ALLOCATE(ModelSpecNames     (nModelSpec))
     ALLOCATE(ModelSpecIDs       (nModelSpec))
@@ -671,27 +675,26 @@ CONTAINS
     ! Assign variables to each species
     DO N = 1, nModelSpec
 
-       ! Read line
-       READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-       IF ( IOS /= 0 ) THEN
+       CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+       IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           WRITE(MSG,100) N, TRIM(SpecFile)
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
-       LNG = LEN(TRIM(DUM))
 
        ! Start reading line from beginning 
+       LNG = LEN(TRIM(DUM))
        LOW = 0
-
+   
        ! Read species ID, name, molecular weight, emitted molecular weight,
        ! molecular coefficient, and Henry coefficients K0, CR, pKa (in this
        ! order).
        DO I = 1, 8
-
+   
           ! Get lower and upper index of species ID (first entry in row).
           ! Skip all leading spaces.
           UPP = LOW
-
+   
           DO WHILE( UPP == LOW .AND. LOW /= LNG )
              LOW = LOW + 1
              IF ( LOW > LNG ) THEN
@@ -702,9 +705,9 @@ CONTAINS
              UPP = NextCharPos( TRIM(DUM), HCO_SPC(), LOW )
              IF ( UPP < 0 ) UPP = LNG
           ENDDO
-
+   
           UPP = UPP - 1 ! Don't read space
-
+   
           ! Read into vector
           SELECT CASE ( I ) 
              CASE ( 1 )
@@ -734,6 +737,9 @@ CONTAINS
 
        ENDDO !I
     ENDDO !N
+
+    ! Close file
+    CLOSE( IU_FILE )
 
     ! Return w/ success
     RC = HCO_SUCCESS
@@ -785,7 +791,7 @@ CONTAINS
     INTEGER               :: I, N, M, LNG, LOW, UPP
     INTEGER               :: SZ(3)
     INTEGER               :: IU_FILE, IOS
-    LOGICAL               :: FOUND
+    LOGICAL               :: FOUND,   EOF
     CHARACTER(LEN=255)    :: MSG, LOC 
     CHARACTER(LEN=255)    :: MyGridFile 
     CHARACTER(LEN=2047)   :: DUM
@@ -826,16 +832,18 @@ CONTAINS
     ENDIF
 
     ! Get grid size (x,y,z)
-    DO N = 1, 3
-       READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-       IF ( IOS /= 0 ) THEN
+    DO N = 1,3
+
+       ! Get next valid line
+       CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+       IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           MSG = 'Error 2 reading ' // TRIM(GridFile)
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
-       LNG = LEN(TRIM(DUM))
  
        ! Read integer after colon (this is the dimension size)
+       LNG = LEN(TRIM(DUM))
        LOW = NextCharPos ( TRIM(DUM), HCO_COL(), 1 )
        IF ( LOW < 0 .OR. LOW == LNG ) THEN
           MSG = 'Cannot extract size information from ' // TRIM(DUM)
@@ -843,8 +851,9 @@ CONTAINS
           RETURN
        ENDIF
        LOW = LOW + 1
-       READ( DUM(LOW:LNG), * ) SZ(N) 
-    ENDDO
+       READ( DUM(LOW:LNG), * ) SZ(N)
+
+    ENDDO !N
 
     ! Grid dimensions
     NX = SZ(1)
@@ -881,15 +890,17 @@ CONTAINS
     ! specified for every grid point or as single value (applied
     ! to all grid boxes).
     DO N=1,2
-       READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-       IF ( IOS /= 0 ) THEN
+
+       ! Get next valid line
+       CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+       IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           MSG = 'Error 3 reading ' // TRIM(GridFile)
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
-       LNG = LEN(TRIM(DUM))
           
        ! Get position after colon
+       LNG = LEN(TRIM(DUM))
        LOW = NextCharPos ( TRIM(DUM), HCO_COL(), 1 )
        IF ( LOW < 0 .OR. LOW == LNG ) THEN 
           MSG = 'Cannot extract grid space from ' // TRIM(DUM)
@@ -897,16 +908,16 @@ CONTAINS
           RETURN
        ENDIF
        LOW = LOW + 1
- 
+    
        ! Read data for each grid cell
        M = 1 ! Index in dlon/dlat
        DO
           ! Get index up to next space.
           UPP = NextCharPos ( TRIM(DUM), HCO_SPC(), LOW )
-
+   
           ! If no space found in word after index LOW, read until end of word.
           IF ( UPP < 0 ) UPP = LNG
-
+   
           ! Read value and pass to DLON / DLAT.
           ! Ignore if only space.
           IF ( DUM(LOW:UPP) /= HCO_SPC() ) THEN
@@ -918,12 +929,12 @@ CONTAINS
              ENDIF
              M = M+1 ! Advance index in DLON/DLAT
           ENDIF
-
+   
           ! Continue at next position
           LOW = UPP + 1
           IF ( LOW >= LNG ) EXIT
        ENDDO
-
+          
        ! Check if we have to fill up dlon
        IF ( M == 2 ) THEN
           IF ( N == 1 ) THEN
@@ -944,7 +955,7 @@ CONTAINS
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
-    ENDDO
+    ENDDO !N
 
     ! Close file
     CLOSE( IU_FILE )      
@@ -1018,7 +1029,7 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE Get_nnMatch( nnMatch, RC ) 
+  SUBROUTINE Get_nnMatch( am_I_Root, nnMatch, RC ) 
 !
 ! !USES:
 !
@@ -1027,6 +1038,7 @@ CONTAINS
 !
 ! !OUTPUT PARAMETERS:
 !
+    LOGICAL, INTENT(IN   )  :: am_I_Root ! Root CPU? 
     INTEGER, INTENT(  OUT)  :: nnMatch   ! Number of HEMCO species that are
                                          ! also species in the atm. model
 !
@@ -1059,7 +1071,8 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS) RETURN 
 
     ! Extract species to be used from input file
-    CALL Model_GetSpecies( nModelSpec,     ModelSpecNames,      &
+    CALL Model_GetSpecies( am_I_Root,                           &
+                           nModelSpec,     ModelSpecNames,      &
                            ModelSpecIDs,   ModelSpecMW,         &
                            ModelSpecEmMW,  ModelSpecMolecRatio, &
                            ModelSpecK0,    ModelSpecCR,         &
@@ -1199,38 +1212,50 @@ CONTAINS
 !
 ! LOCAL VARIABLES:
 !
-    INTEGER           :: I, HcoID
+    INTEGER           :: I, N, HcoID
     CHARACTER(LEN=31) :: DiagnName
 
     !=================================================================
     ! DEFINE_DIAGNOSTICS begins here
     !=================================================================
 
-    ! Loop over all HEMCO species
-    DO I = 1, HcoState%nSpc 
+    ! Get number of diagnostics currently defined in the default
+    ! collection
+    CALL DiagnCollection_Get ( HcoDiagnIDDefault, nnDiagn=N, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
-       ! Get HEMCO ID
-       HcoID = HcoState%Spc(I)%HcoID
-       IF ( HcoID <= 0 ) CYCLE
+    ! If there are no diagnostics defined yet, define some default
+    ! diagnostics below. These are simply the overall emissions 
+    ! (across all extensions, categories, hierarchies) for each
+    ! HEMCO species. 
+    IF ( N == 0 ) THEN
 
-       ! Create diagnostics
-       DiagnName = 'EMIS_' // TRIM(HcoState%Spc(I)%SpcName) 
-       CALL Diagn_Create ( am_I_Root,                         &
-                           HcoState  = HcoState,              &
-                           cName     = DiagnName,             &
-                           ExtNr     = -1,                    &
-                           Cat       = -1,                    &
-                           Hier      = -1,                    &
-                           HcoID     = HcoID,                 &
-                           SpaceDim  = 2,                     &
-                           LevIDx    = -1,                    &
-                           OutUnit   = 'kg/m2/s',             &
-                           AutoFill  = 1,                     &
-                           COL       = HcoDiagnIDDefault,     &
-                           RC        = RC                      )
-       IF ( RC /= HCO_SUCCESS ) RETURN
+       ! Loop over all HEMCO species
+       DO I = 1, HcoState%nSpc 
+   
+          ! Get HEMCO ID
+          HcoID = HcoState%Spc(I)%HcoID
+          IF ( HcoID <= 0 ) CYCLE
+   
+          ! Create diagnostics
+          DiagnName = 'EMIS_' // TRIM(HcoState%Spc(I)%SpcName) 
+          CALL Diagn_Create ( am_I_Root,                         &
+                              HcoState  = HcoState,              &
+                              cName     = DiagnName,             &
+                              ExtNr     = -1,                    &
+                              Cat       = -1,                    &
+                              Hier      = -1,                    &
+                              HcoID     = HcoID,                 &
+                              SpaceDim  = 2,                     &
+                              LevIDx    = -1,                    &
+                              OutUnit   = 'kg/m2/s',             &
+                              AutoFill  = 1,                     &
+                              COL       = HcoDiagnIDDefault,     &
+                              RC        = RC                      )
+          IF ( RC /= HCO_SUCCESS ) RETURN
 
-    ENDDO !I
+       ENDDO !I
+    ENDIF
 
     ! Return w/ success
     RC = HCO_SUCCESS
@@ -1275,7 +1300,7 @@ CONTAINS
 !
     INTEGER             :: AS, IOS, IU_FILE
     INTEGER             :: I,  N,   LNG, LOW
-    LOGICAL             :: FOUND
+    LOGICAL             :: EOF, FOUND
     CHARACTER(LEN=255)  :: MSG, LOC, DUM
     CHARACTER(LEN=255)  :: MyTimeFile 
 
@@ -1305,14 +1330,14 @@ CONTAINS
  
     ! Read start and end of simulation
     DO N = 1,2
-   
-       READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-       IF ( IOS /= 0 ) THEN
+
+       CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+       IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           MSG = 'Error reading time in ' // TRIM(TimeFile)
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
-   
+     
        ! Remove 'BEGIN: ' or 'END: ' at the beginning 
        LNG = LEN(TRIM(DUM))
        LOW = NextCharPos ( TRIM(DUM), HCO_COL(), 1 )
@@ -1324,7 +1349,7 @@ CONTAINS
        LOW = LOW + 1
        DUM = ADJUSTL(DUM(LOW:LNG))
        LNG = LEN(TRIM(DUM))
-   
+      
        ! Times have to be stored as:
        ! YYYY-MM-DD HH:MM:SS
        ! --> read year from position 1:4, month from 6:7, etc.
@@ -1339,19 +1364,20 @@ CONTAINS
        READ ( DUM( 9:10), * ) DYS(N) 
        READ ( DUM(12:13), * ) HRS(N) 
        READ ( DUM(15:16), * ) MNS(N) 
-       READ ( DUM(18:19), * ) SCS(N) 
-    ENDDO
+       READ ( DUM(18:19), * ) SCS(N)
+
+    ENDDO !I
 
     ! Get emission time step
-    READ( IU_FILE, '(A)', IOSTAT=IOS ) DUM
-    IF ( IOS /= 0 ) THEN
-       MSG = 'Error 2 reading ' // TRIM(TimeFile)
+    CALL GetNextLine( am_I_Root, IU_FILE, DUM, EOF, RC )
+    IF ( (RC /= HCO_SUCCESS) .OR. EOF ) THEN
+       MSG = 'Cannot read emission time step from ' // TRIM(TimeFile)
        CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
-    LNG = LEN(TRIM(DUM))
 
     ! Get index after colon 
+    LNG = LEN(TRIM(DUM))
     LOW = NextCharPos ( TRIM(DUM), HCO_COL(), 1 )
     IF ( LOW < 0 .OR. LOW == LNG ) THEN
        MSG = 'Cannot extract index after colon: ' // TRIM(DUM)
@@ -1359,7 +1385,7 @@ CONTAINS
        RETURN
     ENDIF
     LOW = LOW + 1
-    READ( DUM(LOW:LNG), * ) HcoState%TS_EMIS 
+    READ( DUM(LOW:LNG), * ) HcoState%TS_EMIS
 
     ! Set same chemical and dynamic time step
     HcoState%TS_CHEM = HcoState%TS_EMIS
