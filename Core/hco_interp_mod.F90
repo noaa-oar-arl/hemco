@@ -553,10 +553,10 @@ CONTAINS
           Lct%Dct%Dta%V3(T)%Val(:,:,:) = REGR_4D(:,:,:,T)
        ENDDO
 
-       ! Leave
-       CALL HCO_LEAVE( RC )
-       RETURN
-    ENDIF
+    !===================================================================
+    ! Do vertical regridding:
+    !===================================================================
+    ELSE
 
     !===================================================================
     ! GEOS-4 mapping
@@ -877,7 +877,38 @@ CONTAINS
           ENDDO ! T
 
        ENDIF
+
+    !===================================================================
+    ! For all other cases, do not do any vertical regridding 
+    !===================================================================
+#else
+
+       CALL FileData_ArrCheck( Lct%Dct%Dta, nx, ny, nlev, nt, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
+
+       DO T = 1, nt
+          Lct%Dct%Dta%V3(T)%Val(:,:,:) = REGR_4D(:,:,:,T)
+       ENDDO
 #endif
+    ENDIF ! Vertical regridding required
+
+    !===================================================================
+    ! Error check / verbose mode
+    !===================================================================
+    IF ( ASSOCIATED(Lct%Dct%Dta%V3(1)%Val) ) THEN
+      IF ( HCO_IsVerb(2) ) THEN
+          WRITE(MSG,*) 'Did vertical regridding for ',TRIM(Lct%Dct%cName),':'
+          CALL HCO_MSG(MSG)
+          WRITE(MSG,*) 'Number of original levels: ', nlev 
+          CALL HCO_MSG(MSG)
+          WRITE(MSG,*) 'Number of output levels: ', SIZE(Lct%Dct%Dta%V3(1)%Val) 
+          CALL HCO_MSG(MSG,SEP2='-')
+       ENDIF
+    ELSE
+       WRITE(MSG,*) 'Vertical regridding failed: ',TRIM(Lct%Dct%cName)
+       CALL HCO_ERROR( MSG, RC )
+       RETURN
+    ENDIF
 
     ! Return w/ success
     CALL HCO_LEAVE ( RC )
