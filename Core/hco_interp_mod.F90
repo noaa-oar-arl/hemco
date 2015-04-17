@@ -431,10 +431,13 @@ CONTAINS
 ! arbitrary number of model levels onto the vertical levels of the simulation
 ! grid. Since the input data is already on model levels, this is only to
 ! inflate/collapse fields between native/reduced vertical levels, e.g. from
-! 72 native GEOS-5 levels onto the reduced 47 levels.
+! 72 native GEOS-5 levels onto the reduced 47 levels. The vertical
+! interpolation scheme depends on compiler switches. If none of the compiler
+! switches listed below is used, no vertical interpolation is performed, 
+! e.g. the vertical levels of the input grid are retained.
 !\\
 !\\
-! The input data (REGR\_4D) is expected to be already horizontally regridded.
+! The input data (REGR\_4D) is expected to be already regridded horizontally. 
 ! The 4th dimension of REGR\_4D denotes time.
 !\\
 !\\

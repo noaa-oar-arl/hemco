@@ -1413,6 +1413,7 @@ CONTAINS
 !
 ! !USES:
 !
+    USE HCO_ARR_MOD,        ONLY : HCO_ArrAssert
     USE HCO_EMISLIST_MOD,   ONLY : HCO_GetPtr
     USE HCOX_STATE_MOD,     ONLY : ExtDat_Set
 !
@@ -1581,7 +1582,8 @@ CONTAINS
     ! 3D fields 
     !-----------------------------------------------------------------
 
-    CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%CNV_MFC, 'CNV_MFC', RC, FIRST )
+    CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%CNV_MFC, 'CNV_MFC', &
+                      RC, FIRST,  OnLevEdge=.TRUE. )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%SPHU, 'SPHU', RC, FIRST )

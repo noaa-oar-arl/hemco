@@ -973,7 +973,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN   )                   :: FldName
     INTEGER,          INTENT(INOUT)                   :: RC     
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: First
-    REAL(hp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(HcoState%NX,HcoState%NY)
+    REAL(hp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(:,:)
 !
 ! !REVISION HISTORY:
 !  03 Apr 2015 - C. Keller - Initial version
@@ -1148,7 +1148,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN   )                   :: FldName
     INTEGER,          INTENT(INOUT)                   :: RC     
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: First
-    REAL(sp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(HcoState%NX,HcoState%NY)
+    REAL(sp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(:,:)
 !
 ! !REVISION HISTORY:
 !  03 Apr 2015 - C. Keller - Initial version
@@ -1340,7 +1340,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN   )                   :: FldName
     INTEGER,          INTENT(INOUT)                   :: RC     
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: First
-    INTEGER,          INTENT(INOUT), OPTIONAL, TARGET :: Trgt(HcoState%NX,HcoState%NY)
+    INTEGER,          INTENT(INOUT), OPTIONAL, TARGET :: Trgt(:,:)
 !
 ! !REVISION HISTORY:
 !  03 Apr 2015 - C. Keller - Initial version
@@ -1516,7 +1516,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN   )                   :: FldName
     INTEGER,          INTENT(INOUT)                   :: RC     
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: First
-    REAL(hp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(HcoState%NX,HcoState%NY,HcoState%NZ)
+    REAL(hp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(:,:,:)
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: OnLevEdge 
 !
 ! !REVISION HISTORY:
@@ -1741,7 +1741,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN   )                   :: FldName
     INTEGER,          INTENT(INOUT)                   :: RC     
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: First
-    REAL(sp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(HcoState%NX,HcoState%NY,HcoState%NZ)
+    REAL(sp),         INTENT(INOUT), OPTIONAL, TARGET :: Trgt(:,:,:)
     LOGICAL,          INTENT(IN   ), OPTIONAL         :: OnLevEdge 
 !
 ! !REVISION HISTORY:
