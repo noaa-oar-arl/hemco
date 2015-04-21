@@ -1124,7 +1124,9 @@ CONTAINS
 !
 ! !ROUTINE: Diagn_UpdateSp
 !
-! !DESCRIPTION: Subroutine DiagnUpdateSp 
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp is the wrapper routine to update 
+! the diagnostics for single precision arrays. It invokes the main diagnostics
+! update routine with the appropriate arguments. 
 !\\
 !\\
 ! !INTERFACE:
@@ -1192,7 +1194,9 @@ CONTAINS
 !
 ! !ROUTINE: Diagn_UpdateDp
 !
-! !DESCRIPTION: Subroutine DiagnUpdateDp 
+! !DESCRIPTION: Subroutine Diagn\_UpdateDp is the wrapper routine to update 
+! the diagnostics for double precision arrays. It invokes the main diagnostics
+! update routine with the appropriate arguments. 
 !\\
 !\\
 ! !INTERFACE:
