@@ -119,6 +119,8 @@ MODULE HCO_CharTools_Mod
   CHARACTER(LEN=15),   PARAMETER :: DEF_RES = '1x125'
 #elif defined( GRID05x0666 )
   CHARACTER(LEN=15),   PARAMETER :: DEF_RES = '05x0666'
+#elif defined( GRID025x03125 )
+  CHARACTER(LEN=15),   PARAMETER :: DEF_RES = '025x03125'
 #else
   CHARACTER(LEN=15),   PARAMETER :: DEF_RES = 'unknown_res'
 #endif
@@ -355,6 +357,13 @@ CONTAINS
     ! Init
     Ints(:) = -999
 
+    ! If input string is wildcard or otherwise empty, return here.
+    IF ( TRIM(CharStr) == TRIM(WC) .OR. &
+         TRIM(CharStr) == '-'            ) THEN
+       N = 0
+       RETURN
+    ENDIF
+
     ! Extract strings to be translated into integers 
     CALL STRSPLIT( CharStr, TRIM(SEP), SUBSTR, N )
     IF ( N > SIZE(Ints,1) ) THEN
@@ -365,16 +374,9 @@ CONTAINS
     ! Return here if no entry found
     IF ( N == 0 ) RETURN 
 
-    ! Pass all extracted strings to integer vector. Replace wildcard
-    ! character with -999!
+    ! Pass all extracted strings to integer vector.
     DO I = 1, N
-       IF ( TRIM(SUBSTR(I)) == TRIM(WC) ) THEN
-          Ints(I) = -999
-       ELSEIF ( TRIM(SUBSTR(I)) == '-' ) THEN
-          Ints(I) = -999
-       ELSE
-          READ( SUBSTR(I), * ) Ints(I) 
-       ENDIF
+       READ( SUBSTR(I), * ) Ints(I) 
     ENDDO
 
     ! Leave w/ success
