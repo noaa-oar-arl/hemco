@@ -1670,7 +1670,7 @@ CONTAINS
     CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%CLDFRC, 'CLDFRC', RC, FIRST )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
-    CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%GC_LAI, 'GC_LAI', RC, FIRST )
+    CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%LAI, 'LAI', RC, FIRST )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     CALL ExtDat_Set ( am_I_Root, HcoState, ExtState%JNO2, 'JNO2', RC, FIRST )

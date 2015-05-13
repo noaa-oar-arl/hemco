@@ -147,7 +147,7 @@ MODULE HCOX_STATE_MOD
      TYPE(ExtDat_2R),  POINTER :: CLDFRC      ! cloud fraction [-]
      TYPE(ExtDat_2R),  POINTER :: JNO2        ! J-Value for NO2 [1/s] 
      TYPE(ExtDat_2R),  POINTER :: JO1D        ! J-Value for O3  [1/s]
-     TYPE(ExtDat_2R),  POINTER :: GC_LAI      ! daily leaf area index [cm2/cm2] 
+     TYPE(ExtDat_2R),  POINTER :: LAI         ! daily leaf area index [cm2/cm2] 
      INTEGER,          POINTER :: PBL_MAX     ! Max height of PBL [level]
      TYPE(ExtDat_3R),  POINTER :: CNV_MFC     ! Convective cloud mass flux [kg/m2/s] 
      TYPE(ExtDat_3R),  POINTER :: FRAC_OF_PBL ! Fraction of grid box in PBL
@@ -385,7 +385,7 @@ CONTAINS
     CALL ExtDat_Init ( ExtState%CLDFRC, RC ) 
     IF ( RC /= HCO_SUCCESS ) RETURN
 
-    CALL ExtDat_Init ( ExtState%GC_LAI, RC ) 
+    CALL ExtDat_Init ( ExtState%LAI, RC ) 
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     CALL ExtDat_Init ( ExtState%JNO2, RC ) 
@@ -504,7 +504,7 @@ CONTAINS
        CALL ExtDat_Cleanup( ExtState%FRLAKE     )
        CALL ExtDat_Cleanup( ExtState%FRLANDIC   )
        CALL ExtDat_Cleanup( ExtState%CLDFRC     )
-       CALL ExtDat_Cleanup( ExtState%GC_LAI     )
+       CALL ExtDat_Cleanup( ExtState%LAI        )
        CALL ExtDat_Cleanup( ExtState%JNO2       )
        CALL ExtDat_Cleanup( ExtState%JO1D       )
        CALL ExtDat_Cleanup( ExtState%CNV_MFC    )
