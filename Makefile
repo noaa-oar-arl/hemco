@@ -63,13 +63,12 @@ all:
 	@$(MAKE) lib
 
 check:  
-	@$(MAKE) -C $(HCOR) all
+	@$(MAKE) -C $(HCOI) all
 
 clean:
 	@$(MAKE) -C $(HCO)  clean
 	@$(MAKE) -C $(HCOI) clean
 	@$(MAKE) -C $(HCOX) clean
-	@$(MAKE) -C $(HCOR) clean
 
 exe: check
 
@@ -127,6 +126,3 @@ debug:
 help:
 	@$(MAKE) -C $(HELP) help
 #EOC
-
-
-
