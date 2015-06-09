@@ -1,0 +1,16 @@
+This folder contains example data for a HEMCO standalone run where global NO emissions are calculated from the HTAP emission inventory, overlaid by EMEP emissions. 
+
+You can run this example by calling the hemco_standalone executable 'hemco_standalone.x' from within this directory:
+./hemco_standalone.x "HEMCO_sa_Config.rc"
+
+If successfully executed, the HEMCO logfile (HEMCO_sa.log) and diagnostics file (HEMCO_sa.diagnostics.YYYYMMDDhhmm.nc) are written to the output directory.
+
+This folder should contain:
+- HEMCO_sa_Config.rc             : HEMCO configuration file
+- HEMCO_sa_Diagn.rc              : Output diagnostics definition 
+- HEMCO_sa_Grid.rc               : Emission grid definition
+- HEMCO_sa_Spec.rc               : Species definition
+- HEMCO_sa_Time.rc               : Time and date specifications
+- output/                        : Directory with output data
+
+Christoph Keller, 21 Jul 2014.

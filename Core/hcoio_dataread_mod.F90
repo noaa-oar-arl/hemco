@@ -955,8 +955,10 @@ CONTAINS
 
        ! Now convert to HEMCO units. This attempts to convert mass, 
        ! area/volume and time to HEMCO standards (kg, m2/m3, s).
-       ncYr  = FLOOR( MOD(oYMDh1,10000000000) / 1.0d6 )
-       ncMt  = FLOOR( MOD(oYMDh1,1000000)     / 1.0d4 )
+       !GanLuo+ncYr  = FLOOR( MOD(oYMDh1,10000000000) / 1.0d6 )
+       !GanLuo+ncMt  = FLOOR( MOD(oYMDh1,1000000)     / 1.0d4 )
+       ncYr  = FLOOR( MOD(oYMDh1*1.d0,10000000000.d0) / 1.0d6 )
+       ncMt  = FLOOR( MOD(oYMDh1*1.d0,1000000.d0)     / 1.0d4 )
        IF ( ncYr == 0 ) CALL HcoClock_Get( cYYYY = ncYr, RC=RC ) 
        IF ( ncMt == 0 ) CALL HcoClock_Get( cMM   = ncMt, RC=RC ) 
 
@@ -1849,10 +1851,14 @@ CONTAINS
     !=================================================================
 
     ! Get original Yr, Mt, Dy and Hr
-    origYr = FLOOR( MOD(prefYMDh, 10000000000) / 1.0d6 )
-    origMt = FLOOR( MOD(prefYMDh, 1000000    ) / 1.0d4 )
-    origDy = FLOOR( MOD(prefYMDh, 10000      ) / 1.0d2 )
-    origHr = FLOOR( MOD(prefYMDh, 100        ) / 1.0d0 )
+    !GanLuo+origYr = FLOOR( MOD(prefYMDh, 10000000000) / 1.0d6 )
+    !GanLuo+origMt = FLOOR( MOD(prefYMDh, 1000000    ) / 1.0d4 )
+    !GanLuo+origDy = FLOOR( MOD(prefYMDh, 10000      ) / 1.0d2 )
+    !GanLuo+origHr = FLOOR( MOD(prefYMDh, 100        ) / 1.0d0 )
+    origYr = FLOOR( MOD(prefYMDh*1.d0, 10000000000.d0) / 1.0d6 )
+    origMt = FLOOR( MOD(prefYMDh*1.d0, 1000000.d0    ) / 1.0d4 )
+    origDy = FLOOR( MOD(prefYMDh*1.d0, 10000.d0      ) / 1.0d2 )
+    origHr = FLOOR( MOD(prefYMDh*1.d0, 100.d0        ) / 1.0d0 )
 
     ! Extract new attribute from availYMDh and insert into prefYMDh. Pick
     ! closest available value.
@@ -2335,10 +2341,14 @@ CONTAINS
     ! YMDh2hrs begins here! 
     !=================================================================
 
-    hrs = FLOOR( MOD(YMDh, 10000000000) / 1.0d6 ) * 8760 + &
-          FLOOR( MOD(YMDh, 1000000    ) / 1.0d4 ) * 720  + &
-          FLOOR( MOD(YMDh, 10000      ) / 1.0d2 ) * 24   + &
-          FLOOR( MOD(YMDh, 100        ) / 1.0d0 )
+    !GanLuo+hrs = FLOOR( MOD(YMDh, 10000000000) / 1.0d6 ) * 8760 + &
+    !GanLuo+      FLOOR( MOD(YMDh, 1000000    ) / 1.0d4 ) * 720  + &
+    !GanLuo+      FLOOR( MOD(YMDh, 10000      ) / 1.0d2 ) * 24   + &
+    !GanLuo+      FLOOR( MOD(YMDh, 100        ) / 1.0d0 )
+    hrs = FLOOR( MOD(YMDh*1.d0, 10000000000.d0) / 1.0d6 ) * 8760 + &
+          FLOOR( MOD(YMDh*1.d0, 1000000.d0    ) / 1.0d4 ) * 720  + &
+          FLOOR( MOD(YMDh*1.d0, 10000.d0      ) / 1.0d2 ) * 24   + &
+          FLOOR( MOD(YMDh*1.d0, 100.d0        ) / 1.0d0 )
 
   END FUNCTION YMDh2hrs 
 !EOC
@@ -2378,7 +2388,6 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     REAL(hp)              :: DLAT, AREA
-    REAL(dp)              :: PI_180
     INTEGER               :: NLAT, J
     CHARACTER(LEN=255)    :: MSG, LOC
 
@@ -2388,7 +2397,6 @@ CONTAINS
 
     ! Initialize
     LOC    = 'NORMALIZE_AREA (hcoio_dataread_mod.F90 )'
-    PI_180 = HcoState%Phys%PI / 180.0_dp
 
     ! Check array size
     NLAT = SIZE(LatEdge,1) - 1
@@ -2408,7 +2416,7 @@ CONTAINS
     DO J = 1, NLAT
        ! get grid box area in m2 for grid box with lower and upper latitude llat/ulat:
        ! Area = 2 * PI * Re^2 * DLAT / nlon, where DLAT = abs( sin(ulat) - sin(llat) ) 
-       DLAT = ABS( SIN(LatEdge(J+1)*PI_180) - SIN(LatEdge(J)*PI_180) )
+       DLAT = ABS( SIN(LatEdge(J+1)*HcoState%Phys%PI_180) - SIN(LatEdge(J)*HcoState%Phys%PI_180) )
        AREA = ( 2_hp * HcoState%Phys%PI * DLAT * HcoState%Phys%Re**2 ) / REAL(nlon,hp)
 
        ! convert array data to m-2
@@ -3196,7 +3204,8 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     INTEGER            :: I, J
-    INTEGER            :: LON1, LON2, LAT1, LAT2
+    REAL(hp)           :: LON1, LON2, LAT1, LAT2
+    REAL(hp)           :: ILON, ILAT 
     CHARACTER(LEN=255) :: LOC = 'FillMaskBox (HCOIO_DataRead_Mod.F90)'
 
     !=================================================================
@@ -3211,18 +3220,22 @@ CONTAINS
 
     ! Check for every grid box if mid point is within mask region. 
     ! Set to 1.0 if this is the case.
-!$OMP PARALLEL DO        &
-!$OMP DEFAULT( SHARED )  &
-!$OMP PRIVATE( I, J )    &
+!$OMP PARALLEL DO                  &
+!$OMP DEFAULT( SHARED           )  &
+!$OMP PRIVATE( I, J, ILON, ILAT )  &
 !$OMP SCHEDULE( DYNAMIC )
     DO J = 1, HcoState%NY
     DO I = 1, HcoState%NX
-    
-       IF ( HcoState%Grid%XMID%Val(I,J) >= LON1 .AND. &
-            HcoState%Grid%XMID%Val(I,J) <= LON2 .AND. &
-            HcoState%Grid%YMID%Val(I,J) >= LAT1 .AND. &
-            HcoState%Grid%YMID%Val(I,J) <= LAT2        ) THEN
 
+       ! Get longitude and latitude at this grid box
+       ILON = HcoState%Grid%XMID%Val(I,J)
+       IF ( ILON >= 180.0_hp ) ILON = ILON - 360.0_hp
+
+       ILAT = HcoState%Grid%YMID%Val(I,J)
+
+       ! Check if mid point is within mask region    
+       IF ( ILON >= LON1 .AND. ILON <= LON2 .AND. &
+            ILAT >= LAT1 .AND. ILAT <= LAT2        ) THEN 
           Lct%Dct%Dta%V2(1)%Val(I,J) = 1.0_sp
        ENDIF 
 

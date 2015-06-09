@@ -37,6 +37,7 @@ DOC  :=$(ROOT)/doc
 HCO  :=$(SRC)/Core
 HCOI :=$(SRC)/Interfaces
 HCOX :=$(SRC)/Extensions
+HCOR :=$(SRC)/StandAlone_Run
 HELP :=$(ROOT)/Help
 LIB  :=$(ROOT)/lib
 MOD  :=$(ROOT)/mod
@@ -52,6 +53,7 @@ include $(ROOT)/Makefile_header.mk
 ###############################################################################
 
 .PHONY: all check clean distclean debug test
+.PHONY: exe
 
 #-----------------------------------------
 # Targets for building code
@@ -60,15 +62,22 @@ include $(ROOT)/Makefile_header.mk
 all:
 	@$(MAKE) lib
 
+check:  
+	@$(MAKE) -C $(HCOR) all
+
 clean:
 	@$(MAKE) -C $(HCO)  clean
 	@$(MAKE) -C $(HCOI) clean
 	@$(MAKE) -C $(HCOX) clean
+	@$(MAKE) -C $(HCOR) clean
+
+exe: check
 
 lib:
 	@$(MAKE) libHCO
 	@$(MAKE) libHCOX
 	@$(MAKE) libHCOI
+	@$(MAKE) exe
 
 libHCO:
 	@$(MAKE) -C $(HCO) lib
@@ -91,6 +100,7 @@ debug:
 	@echo "HCO        : $(HCO)"
 	@echo "HCOI       : $(HCOI)"
 	@echo "HCOX       : $(HCOX)"
+	@echo "HCOR       : $(HCOR)"
 	@echo "HELP       : $(HELP)"
 	@echo "DOC        : $(DOC)"
 	@echo "LIB        : $(LIB)"

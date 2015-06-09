@@ -858,6 +858,7 @@
       
             ! Lon and lat of grid box (I,J) in degrees
             X = HcoState%Grid%XMID%Val( I, J )
+            IF ( X >= 180.0_hp ) X = X - 360.0_hp
             Y = HcoState%Grid%YMID%Val( I, J )
       
             ! Methyl butenol is emitted only in North America, where
@@ -1705,7 +1706,7 @@
       PMISOLAI = LAI_PREVDAY(I,J)
       MISOLAI  = ISOLAI
       TS       = ExtState%T2M%Arr%Val(I,J)
-      SUNCOS   = ExtState%SUNCOSmid%Arr%Val(I,J)
+      SUNCOS   = ExtState%SUNCOS%Arr%Val(I,J)
 
       ! Convert Q_DIR and Q_DIFF from (W/m2) to (micromol/m2/s)
       Q_DIR_2  = ExtState%PARDR%Arr%Val(I,J) * WM2_TO_UMOLM2S
@@ -4387,7 +4388,7 @@
 
       ! Enable met. fields
       ExtState%T2M%DoUse       = .TRUE.
-      ExtState%SUNCOSmid%DoUse = .TRUE.
+      ExtState%SUNCOS%DoUse    = .TRUE.
       ExtState%PARDR%DoUse     = .TRUE.
       ExtState%PARDF%DoUse     = .TRUE.
       ExtState%LAI%DoUse       = .TRUE.
