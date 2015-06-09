@@ -80,7 +80,7 @@ clean:
 	@echo "===> Making clean in directory: HEMCO/Interfaces <==="
 	@rm -f *.x *$(OBJECTS) $(MODULES) $(LIBRARY) $(LIB)/$(LIBRARY)
 
-exe: $(OBJx)
+exe: 
 	@echo "LINK: $(LINK_HCO)"
 	$(LD) $(OBJECTS) $(LINK_HCO) -o $(EXE)
 
@@ -116,7 +116,7 @@ hcoi_esmf_mod.o : hcoi_esmf_mod.F90
 
 hcoi_standalone_mod.o : hcoi_standalone_mod.F90
 
-hemco_standalone_mod.o : hemco_standalone_mod.F90 \
-                         hcoi_standalone_mod.o
+hemco_standalone.o : hemco_standalone.F90 \
+                     hcoi_standalone_mod.o
 
 #EOC
