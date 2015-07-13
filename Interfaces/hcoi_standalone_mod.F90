@@ -2165,14 +2165,18 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  08 Sep 2014 - C. Keller - Initial Version
+!  13 Jul 2015 - C. Keller - Bug fix: now save YYYYMMDD and hhmmss in different
+!                            variables to avoid integer truncation errors.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! LOCAL VARIABLES:
 !
-    INTEGER       :: THISDATETIME
-    INTEGER, SAVE :: ENDDATETIME = -1
+    INTEGER       :: THISYYYYMMDD
+    INTEGER       :: THIShhmmss
+    INTEGER, SAVE :: ENDYYYYMMDD = -1
+    INTEGER, SAVE :: ENDhhmmss   = -1
 
     !=================================================================
     ! IsEndOfSimulation begins here
@@ -2182,17 +2186,21 @@ CONTAINS
     IsEnd = .FALSE.
 
     ! Calculate simulation end datetime if not yet done so
-    IF ( ENDDATETIME < 0 ) THEN
-       ENDDATETIME = YRS(2)*10000000000 + MTS(2)*100000000 + DYS(2)*1000000 &
-                   + HRS(2)*10000       + MNS(2)*100       + SCS(2)
+    IF ( ENDYYYYMMDD < 0 ) THEN
+       ENDYYYYMMDD = YRS(2)*10000 + MTS(2)*100 + DYS(2)
+       ENDhhmmss   = HRS(2)*10000 + MNS(2)*100 + SCS(2)
     ENDIF
 
     ! Calculate current datetime
-    THISDATETIME = YR*10000000000 + MT*100000000 + DY*1000000 &
-                 + HR*10000       + MN*100       + SC
+    THISYYYYMMDD = YR*10000 + MT*100 + DY
+    THIShhmmss   = HR*10000 + MN*100 + SC
 
     ! Check if current datetime is beyond simulation end date
-    IF ( THISDATETIME >= ENDDATETIME ) IsEnd = .TRUE.
+    IF ( THISYYYYMMDD > ENDYYYYMMDD ) THEN
+       IsEnd = .TRUE.
+    ELSEIF ( (THISYYYYMMDD == ENDYYYYMMDD) .AND. (THIShhmmss > ENDhhmmss) ) THEN
+       IsEnd = .TRUE.
+    ENDIF
 
   END FUNCTION IsEndOfSimulation
 !EOC
