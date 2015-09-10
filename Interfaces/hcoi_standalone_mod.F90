@@ -1129,14 +1129,41 @@ CONTAINS
 
        ! Set longitude and latitude edge values if not read from disk
        IF ( XEDGE(I,J,1) == HCO_MISSVAL ) THEN
-          DLON = ( XMAX - XMIN ) / NX
-          XEDGE(I,J,1) = XMIN + ( (I-1) * DLON )
+
+          ! eventually get from mid-points
+          IF ( XMID(I,J,1) /= HCO_MISSVAL ) THEN
+             IF ( I > 1 ) THEN 
+                DLON         = XMID(I,J,1) - XMID(I-1,J,1)
+             ELSE
+                DLON         = XMID(I+1,J,1) - XMID(I,J,1)
+             ENDIF
+             XEDGE(I,J,1) = XMID(I,J,1) - DLON/2.0
+
+          ! otherwise assume constant grid spacing
+          ELSE
+             DLON = ( XMAX - XMIN ) / NX
+             XEDGE(I,J,1) = XMIN + ( (I-1) * DLON )
+          ENDIF
        ELSE
           DLON = XEDGE(I+1,J,1) - XEDGE(I,J,1)
-       ENDIF       
+       ENDIF
+ 
        IF ( YEDGE(I,J,1) == HCO_MISSVAL ) THEN
-          DLAT = ( YMAX - YMIN ) / NY
-          YEDGE(I,J,1) = YMIN + ( (J-1) * DLAT )
+
+          ! eventually get from mid-points
+          IF ( YMID(I,J,1) /= HCO_MISSVAL ) THEN
+             IF ( J > 1 ) THEN 
+                DLAT         = YMID(I,J,1) - YMID(I,J-1,1)
+             ELSE
+                DLAT         = YMID(I,J+1,1) - YMID(I,J,1)
+             ENDIF
+             YEDGE(I,J,1) = YMID(I,J,1) - DLAT/2.0
+
+          ! otherwise assume constant grid spacing
+          ELSE
+             DLAT = ( YMAX - YMIN ) / NY
+             YEDGE(I,J,1) = YMIN + ( (J-1) * DLAT )
+          ENDIF       
        ELSE
           DLAT = YEDGE(I,J+1,1) - YEDGE(I,J,1)
        ENDIF       
