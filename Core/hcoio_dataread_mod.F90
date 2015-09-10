@@ -1242,12 +1242,14 @@ CONTAINS
     !-----------------------------------------------------------------
     ! Add to diagnostics (if it exists)
     !-----------------------------------------------------------------
-    IF ( Lct%Dct%Dta%SpaceDim == 3 .AND. ASSOCIATED(Lct%Dct%Dta%V3(1)%Val) ) THEN
-       CALL Diagn_Update ( am_I_Root, cName=TRIM(Lct%Dct%cName), &
-                           Array3D=Lct%Dct%Dta%V3(1)%Val, COL=-1, RC=RC )
-    ELSEIF ( Lct%Dct%Dta%SpaceDim == 2 .AND. ASSOCIATED(Lct%Dct%Dta%V2(1)%Val) ) THEN
-       CALL Diagn_Update ( am_I_Root, cName=TRIM(Lct%Dct%cName), &
-                           Array2D=Lct%Dct%Dta%V2(1)%Val, COL=-1, RC=RC )
+    IF ( HcoState%Options%Field2Diagn ) THEN
+       IF ( Lct%Dct%Dta%SpaceDim == 3 .AND. ASSOCIATED(Lct%Dct%Dta%V3(1)%Val) ) THEN
+          CALL Diagn_Update ( am_I_Root, cName=TRIM(Lct%Dct%cName), &
+                              Array3D=Lct%Dct%Dta%V3(1)%Val, COL=-1, RC=RC )
+       ELSEIF ( Lct%Dct%Dta%SpaceDim == 2 .AND. ASSOCIATED(Lct%Dct%Dta%V2(1)%Val) ) THEN
+          CALL Diagn_Update ( am_I_Root, cName=TRIM(Lct%Dct%cName), &
+                              Array2D=Lct%Dct%Dta%V2(1)%Val, COL=-1, RC=RC )
+       ENDIF
     ENDIF
 
     !-----------------------------------------------------------------
