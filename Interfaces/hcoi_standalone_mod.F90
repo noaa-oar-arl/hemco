@@ -2142,7 +2142,7 @@ CONTAINS
     ! Check if current datetime is beyond simulation end date
     IF ( THISYYYYMMDD > ENDYYYYMMDD ) THEN
        IsEnd = .TRUE.
-    ELSEIF ( (THISYYYYMMDD == ENDYYYYMMDD) .AND. (THIShhmmss > ENDhhmmss) ) THEN
+    ELSEIF ( (THISYYYYMMDD == ENDYYYYMMDD) .AND. (THIShhmmss >= ENDhhmmss) ) THEN
        IsEnd = .TRUE.
     ENDIF
 
