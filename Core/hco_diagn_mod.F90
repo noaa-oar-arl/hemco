@@ -1106,7 +1106,7 @@ CONTAINS
   END SUBROUTINE Diagn_Create
 !EOC
 !------------------------------------------------------------------------------
-!          Harvard University Atmospheric Chemistry Modeling Group            !
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
@@ -1179,7 +1179,7 @@ CONTAINS
   END SUBROUTINE Diagn_UpdateSp
 !EOC
 !------------------------------------------------------------------------------
-!          Harvard University Atmospheric Chemistry Modeling Group            !
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
@@ -1293,16 +1293,19 @@ CONTAINS
 !\\
 !\\
 ! Notes:
-! - For a given time step, the same diagnostics container can be 
-!   updated multiple times. The field average is always defined as
-!   temporal average, e.g. multiple updates on the same time step
-!   will not increase the averaging weight of that time step.
-! - If the passed array is empty (i.e. not associated), it is 
-!   treated as empty values (i.e. zeros).
-! - The collection number can be set to -1 to scan trough all 
-!   existing diagnostic collections.
-!\\
-!\\
+! \begin{itemize}
+! \item For a given time step, the same diagnostics container can be 
+!       updated multiple times. The field average is always defined as
+!       temporal average, e.g. multiple updates on the same time step
+!       will not increase the averaging weight of that time step.
+!
+! \item If the passed array is empty (i.e. not associated), it is 
+!       treated as empty values (i.e. zeros).
+!
+! \item The collection number can be set to -1 to scan trough all 
+!       existing diagnostic collections.
+! \end{itemize}
+!
 ! !INTERFACE:
 !
   SUBROUTINE Diagn_UpdateDriver( am_I_Root, cID,        cName,                   &
@@ -3593,18 +3596,19 @@ CONTAINS
 !
   SUBROUTINE DiagnCollection_Find ( PS, FOUND, RC, ThisColl ) 
 !
-! !INPUT ARGUMENTS:
+! !INPUT PARAMETERS:
 !
     INTEGER,               INTENT(IN   )          :: PS       ! desired collection number 
 !
-! !INPUT/OUTPUT ARGUMENTS:
+! !INPUT/OUTPUT PARAMETERS:
 !
     LOGICAL,               INTENT(  OUT)          :: FOUND    ! Collection exists?
     INTEGER,               INTENT(INOUT)          :: RC       ! Return code 
     TYPE(DiagnCollection), POINTER,      OPTIONAL :: ThisColl ! Pointer to collection 
 !
 ! !REVISION HISTORY:
-!  01 Apr 2015 - C. Keller - Initial version
+!  01 Apr 2015 - C. Keller   - Initial version
+!  10 Jul 2015 - R. Yantosca - Fixed minor issues in ProTeX header
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3804,6 +3808,8 @@ CONTAINS
 !
 ! !REVISION HISTORY: 
 !  06 Aug 2015 - C. Keller   - Initial version 
+!  30 Sep 2015 - C. Keller   - Bug fix: now check h/m/s explicitly instead of
+!                              just taking the difference between hms and lmhs.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3811,6 +3817,7 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     INTEGER             :: YYYY, MM,   DD,   h, m, s
+    INTEGER             :: lh, lm, ls
     INTEGER             :: delta
     INTEGER             :: dymd, lymd, dhms, lhms 
     INTEGER             :: RC
@@ -3833,8 +3840,35 @@ CONTAINS
 
     ! Check if we need to write this collection now
     IF ( .NOT. TimeToWrite .AND. dhms > 0 .AND. lhms >= 0 ) THEN
-       delta = ( h * 10000 + m * 100 + s ) - lhms
-       IF ( delta >= dhms ) TimeToWrite = .TRUE.
+       ! lh, lm and ls are the hour, minute, and second of the last
+       ! writeout
+       lh = FLOOR( MOD(lhms*1.d0, 1000000.0d0 ) / 1.0d4 )
+       lm = FLOOR( MOD(lhms*1.d0, 10000.0d0   ) / 1.0d2 )
+       ls = FLOOR( MOD(lhms*1.d0, 100.0d0     ) / 1.0d0 )
+ 
+       ! If we are in the same hour as last writeout:
+       IF ( h == lh ) THEN
+
+          ! If we are in the same minute and seconds are same or 
+          ! higher ==> write out
+          IF ( m == lm .AND. s >= ls ) THEN
+             TimeToWrite = .TRUE.
+
+          ! If minutes are higher than last writeout ==> time for diagnostics.
+          ELSEIF ( m > lm ) THEN
+             TimeToWrite = .TRUE.
+          ENDIF
+
+       ! If we are not in the same hour
+       ELSE
+          ! If current hour is 0, set to 24 so that it will be larger than e.g. 23. 
+          IF ( h == 0 ) h = 24
+
+          ! Time to write if current hour is larger than last hour
+          IF ( h > lh ) THEN
+             TimeToWrite = .TRUE.
+          ENDIF
+       ENDIF
     ENDIF
 
     IF ( .NOT. TimeToWrite .AND. dymd > 0 .AND. lymd >= 0 ) THEN
@@ -3902,8 +3936,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: DiagnFileOpen is a wrapper routine to open the diagnostics list
-!  file specified by attribute 'DiagnFile' of the HEMCO configuration file.
+! !DESCRIPTION: Opens a diagnostic configuration file.  This is where you
+!  tell HEMCO which diagnostics you would like to send directly to netCDF 
+!  output.
 !\\
 !\\
 ! !INTERFACE:
@@ -3988,7 +4023,8 @@ CONTAINS
 ! !IROUTINE: DiagnFileGetNext returns the diagnostics entries of the next
 !  line of the diagnostics list file. 
 !
-! !DESCRIPTION: 
+! !DESCRIPTION: Gets information from the next line of the diagnostic
+!  configuration file.
 !\\
 !\\
 ! !INTERFACE:
@@ -4095,7 +4131,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: DiagnFileClose closes the diagnostics list file.
+! !IROUTINE: DiagnFileClose
+!
+! !DESCRIPTION: Closes the diagnostic configuration file.
 !\\
 !\\
 ! !INTERFACE:
