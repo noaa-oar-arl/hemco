@@ -3808,6 +3808,8 @@ CONTAINS
 !
 ! !REVISION HISTORY: 
 !  06 Aug 2015 - C. Keller   - Initial version 
+!  30 Sep 2015 - C. Keller   - Bug fix: now check h/m/s explicitly instead of
+!                              just taking the difference between hms and lmhs.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3815,6 +3817,7 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     INTEGER             :: YYYY, MM,   DD,   h, m, s
+    INTEGER             :: lh, lm, ls
     INTEGER             :: delta
     INTEGER             :: dymd, lymd, dhms, lhms 
     INTEGER             :: RC
@@ -3837,8 +3840,35 @@ CONTAINS
 
     ! Check if we need to write this collection now
     IF ( .NOT. TimeToWrite .AND. dhms > 0 .AND. lhms >= 0 ) THEN
-       delta = ( h * 10000 + m * 100 + s ) - lhms
-       IF ( delta >= dhms ) TimeToWrite = .TRUE.
+       ! lh, lm and ls are the hour, minute, and second of the last
+       ! writeout
+       lh = FLOOR( MOD(lhms*1.d0, 1000000.0d0 ) / 1.0d4 )
+       lm = FLOOR( MOD(lhms*1.d0, 10000.0d0   ) / 1.0d2 )
+       ls = FLOOR( MOD(lhms*1.d0, 100.0d0     ) / 1.0d0 )
+ 
+       ! If we are in the same hour as last writeout:
+       IF ( h == lh ) THEN
+
+          ! If we are in the same minute and seconds are same or 
+          ! higher ==> write out
+          IF ( m == lm .AND. s >= ls ) THEN
+             TimeToWrite = .TRUE.
+
+          ! If minutes are higher than last writeout ==> time for diagnostics.
+          ELSEIF ( m > lm ) THEN
+             TimeToWrite = .TRUE.
+          ENDIF
+
+       ! If we are not in the same hour
+       ELSE
+          ! If current hour is 0, set to 24 so that it will be larger than e.g. 23. 
+          IF ( h == 0 ) h = 24
+
+          ! Time to write if current hour is larger than last hour
+          IF ( h > lh ) THEN
+             TimeToWrite = .TRUE.
+          ENDIF
+       ENDIF
     ENDIF
 
     IF ( .NOT. TimeToWrite .AND. dymd > 0 .AND. lymd >= 0 ) THEN
