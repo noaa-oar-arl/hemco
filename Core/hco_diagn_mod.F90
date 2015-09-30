@@ -1106,7 +1106,7 @@ CONTAINS
   END SUBROUTINE Diagn_Create
 !EOC
 !------------------------------------------------------------------------------
-!          Harvard University Atmospheric Chemistry Modeling Group            !
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
@@ -1179,7 +1179,7 @@ CONTAINS
   END SUBROUTINE Diagn_UpdateSp
 !EOC
 !------------------------------------------------------------------------------
-!          Harvard University Atmospheric Chemistry Modeling Group            !
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
@@ -1293,16 +1293,19 @@ CONTAINS
 !\\
 !\\
 ! Notes:
-! - For a given time step, the same diagnostics container can be 
-!   updated multiple times. The field average is always defined as
-!   temporal average, e.g. multiple updates on the same time step
-!   will not increase the averaging weight of that time step.
-! - If the passed array is empty (i.e. not associated), it is 
-!   treated as empty values (i.e. zeros).
-! - The collection number can be set to -1 to scan trough all 
-!   existing diagnostic collections.
-!\\
-!\\
+! \begin{itemize}
+! \item For a given time step, the same diagnostics container can be 
+!       updated multiple times. The field average is always defined as
+!       temporal average, e.g. multiple updates on the same time step
+!       will not increase the averaging weight of that time step.
+!
+! \item If the passed array is empty (i.e. not associated), it is 
+!       treated as empty values (i.e. zeros).
+!
+! \item The collection number can be set to -1 to scan trough all 
+!       existing diagnostic collections.
+! \end{itemize}
+!
 ! !INTERFACE:
 !
   SUBROUTINE Diagn_UpdateDriver( am_I_Root, cID,        cName,                   &
@@ -3593,18 +3596,19 @@ CONTAINS
 !
   SUBROUTINE DiagnCollection_Find ( PS, FOUND, RC, ThisColl ) 
 !
-! !INPUT ARGUMENTS:
+! !INPUT PARAMETERS:
 !
     INTEGER,               INTENT(IN   )          :: PS       ! desired collection number 
 !
-! !INPUT/OUTPUT ARGUMENTS:
+! !INPUT/OUTPUT PARAMETERS:
 !
     LOGICAL,               INTENT(  OUT)          :: FOUND    ! Collection exists?
     INTEGER,               INTENT(INOUT)          :: RC       ! Return code 
     TYPE(DiagnCollection), POINTER,      OPTIONAL :: ThisColl ! Pointer to collection 
 !
 ! !REVISION HISTORY:
-!  01 Apr 2015 - C. Keller - Initial version
+!  01 Apr 2015 - C. Keller   - Initial version
+!  10 Jul 2015 - R. Yantosca - Fixed minor issues in ProTeX header
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3902,8 +3906,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: DiagnFileOpen is a wrapper routine to open the diagnostics list
-!  file specified by attribute 'DiagnFile' of the HEMCO configuration file.
+! !DESCRIPTION: Opens a diagnostic configuration file.  This is where you
+!  tell HEMCO which diagnostics you would like to send directly to netCDF 
+!  output.
 !\\
 !\\
 ! !INTERFACE:
@@ -3988,7 +3993,8 @@ CONTAINS
 ! !IROUTINE: DiagnFileGetNext returns the diagnostics entries of the next
 !  line of the diagnostics list file. 
 !
-! !DESCRIPTION: 
+! !DESCRIPTION: Gets information from the next line of the diagnostic
+!  configuration file.
 !\\
 !\\
 ! !INTERFACE:
@@ -4058,10 +4064,10 @@ CONTAINS
     IF ( .NOT. EOF ) THEN 
 
        ! Parse diagnostics information from line
-       CALL STRREPL( LINE, HCO_TAB(), HCO_SPC() )
+       CALL STRREPL( LINE, HCO_TAB, HCO_SPC )
 
        ! Split into substrings
-       CALL STRSPLIT( LINE, HCO_SPC(), SUBSTR, N ) 
+       CALL STRSPLIT( LINE, HCO_SPC, SUBSTR, N ) 
 
        ! There must be at least 7 entries
        IF ( N < 7 ) THEN 
@@ -4095,7 +4101,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: DiagnFileClose closes the diagnostics list file.
+! !IROUTINE: DiagnFileClose
+!
+! !DESCRIPTION: Closes the diagnostic configuration file.
 !\\
 !\\
 ! !INTERFACE:

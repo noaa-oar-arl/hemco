@@ -22,6 +22,7 @@ MODULE HCO_State_Mod
 !
   USE HCO_Error_Mod
   USE HCO_Arr_Mod
+  USE HCO_VertGrid_Mod
 
 #if defined(ESMF_)
   USE ESMF
@@ -162,7 +163,9 @@ MODULE HCO_State_Mod
      TYPE(Arr2D_Hp), POINTER :: YSIN       ! sin of y-direction grid edges*
      TYPE(Arr2D_Hp), POINTER :: AREA_M2    ! grid box areas (m2)
      TYPE(Arr2D_Hp), POINTER :: ZSFC       ! surface geopotential height (m)**
+     TYPE(Arr2D_Hp), POINTER :: PSFC       ! surface pressure (Pa) 
      TYPE(Arr3D_Hp), POINTER :: BXHEIGHT_M ! grid box heights (m)** 
+     TYPE(VertGrid), POINTER :: ZGRID      ! vertical grid description
   END TYPE HcoGrid
 
   !=========================================================================
@@ -331,9 +334,16 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
     CALL HCO_ArrInit ( HcoState%Grid%AREA_M2,    0, 0,    RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
+    CALL HCO_ArrInit ( HcoState%Grid%BXHEIGHT_M, 0, 0, 0, RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
     CALL HCO_ArrInit ( HcoState%Grid%ZSFC,       0, 0,    RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
-    CALL HCO_ArrInit ( HcoState%Grid%BXHEIGHT_M, 0, 0, 0, RC )
+    CALL HCO_ArrInit ( HcoState%Grid%PSFC,       0, 0,    RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Initialize vertical grid 
+    HcoState%Grid%ZGRID => NULL()
+    CALL HCO_VertGrid_Init( am_I_Root, HcoState%Grid%ZGRID, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     !=====================================================================
@@ -504,15 +514,17 @@ CONTAINS
 
     ! Deallocate grid information
     IF ( ASSOCIATED ( HcoState%Grid) ) THEN
-       CALL HCO_ArrCleanup( HcoState%Grid%XMID       )
-       CALL HCO_ArrCleanup( HcoState%Grid%YMID       )
-       CALL HCO_ArrCleanup( HcoState%Grid%XEDGE      )
-       CALL HCO_ArrCleanup( HcoState%Grid%YEDGE      )
-       CALL HCO_ArrCleanup( HcoState%Grid%PEDGE      )
-       CALL HCO_ArrCleanup( HcoState%Grid%YSIN       )
-       CALL HCO_ArrCleanup( HcoState%Grid%AREA_M2    )
-       CALL HCO_ArrCleanup( HcoState%Grid%ZSFC       )
-       CALL HCO_ArrCleanup( HcoState%Grid%BXHEIGHT_M )
+       CALL HCO_VertGrid_Cleanup( HcoState%Grid%ZGRID )
+       CALL HCO_ArrCleanup( HcoState%Grid%XMID        )
+       CALL HCO_ArrCleanup( HcoState%Grid%YMID        )
+       CALL HCO_ArrCleanup( HcoState%Grid%XEDGE       )
+       CALL HCO_ArrCleanup( HcoState%Grid%YEDGE       )
+       CALL HCO_ArrCleanup( HcoState%Grid%PEDGE       )
+       CALL HCO_ArrCleanup( HcoState%Grid%YSIN        )
+       CALL HCO_ArrCleanup( HcoState%Grid%AREA_M2     )
+       CALL HCO_ArrCleanup( HcoState%Grid%BXHEIGHT_M  )
+       CALL HCO_ArrCleanup( HcoState%Grid%ZSFC        )
+       CALL HCO_ArrCleanup( HcoState%Grid%PSFC        )
        DEALLOCATE(HcoState%Grid)
     ENDIF
 
@@ -556,7 +568,7 @@ CONTAINS
 !
 ! !USES:
 !
-      USE HCO_CHARTOOLS_MOD,   ONLY : HCO_WCD
+      USE HCO_EXTLIST_MOD,     ONLY : HCO_GetOpt
 !
 ! !INPUT PARAMETERS:
 !
@@ -584,7 +596,7 @@ CONTAINS
     Indx = -1
 
     ! Return 0 if wildcard character
-    IF ( TRIM(name) == HCO_WCD() ) THEN
+    IF ( TRIM(name) == TRIM(HCO_GetOpt('Wildcard')) ) THEN
        Indx = 0
        RETURN
     ENDIF
@@ -620,7 +632,7 @@ CONTAINS
 !
 ! !USES:
 !
-      USE HCO_CHARTOOLS_MOD,   ONLY : HCO_WCD
+      USE HCO_EXTLIST_MOD,   ONLY : HCO_GetOpt
 !
 ! !INPUT PARAMETERS:
 !
@@ -645,7 +657,7 @@ CONTAINS
     Indx = -1
 
     ! Return 0 if wildcard character
-    IF ( TRIM(name) == HCO_WCD() ) THEN
+    IF ( TRIM(name) == TRIM(HCO_GetOpt('Wildcard')) ) THEN
        Indx = 0
        RETURN
     ENDIF
@@ -683,7 +695,7 @@ CONTAINS
 !
     USE CHARPAK_MOD,         ONLY : STRSPLIT 
     USE HCO_EXTLIST_MOD,     ONLY : GetExtSpcStr
-    USE HCO_CHARTOOLS_MOD,   ONLY : HCO_SEP
+    USE HCO_EXTLIST_MOD,     ONLY : HCO_GetOpt 
 !
 ! !INPUT PARAMETERS:
 !
@@ -726,7 +738,7 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Split character into species string. 
-    CALL STRSPLIT( SpcStr, HCO_SEP(), SUBSTR, nSpc )
+    CALL STRSPLIT( SpcStr, HCO_GetOpt('Separator'), SUBSTR, nSpc )
 
     ! nothing to do if there are no species
     IF ( nSpc == 0 ) RETURN 

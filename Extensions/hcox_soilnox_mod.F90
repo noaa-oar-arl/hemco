@@ -266,6 +266,7 @@ CONTAINS
     USE HCO_FLuxArr_Mod,    ONLY : HCO_EmisAdd
     USE HCO_EmisList_Mod,   ONLY : HCO_GetPtr
     USE HCO_ExtList_Mod,    ONLY : GetExtOpt
+    USE HCO_ExtList_Mod,    ONLY : HCO_GetOpt
     USE HCO_Restart_Mod,    ONLY : HCO_RestartGet
     USE HCO_Restart_Mod,    ONLY : HCO_RestartWrite
 !
@@ -393,7 +394,8 @@ CONTAINS
              RETURN
           ENDIF
           ALLOCATE(VecDp(MaxDryCoeff))
-          CALL HCO_CharSplit( DMY, HCO_SEP(), HCO_WCD(), VecDp, N, RC )
+          CALL HCO_CharSplit( DMY, HCO_GetOpt('Separator'), &
+                              HCO_GetOpt('Wildcard'), VecDp, N, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
           ALLOCATE(DRYCOEFF(N))
           DRYCOEFF(1:N) = VecDp(1:N)
@@ -670,7 +672,7 @@ CONTAINS
  
     ! Get global scale factor
     FERT_SCALE = HCOX_SoilNOx_GetFertScale()
- 
+
     ! Get HEMCO species IDs
     CALL HCO_GetExtHcoID( HcoState, ExtNr, HcoIDs, SpcNames, nSpc, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN

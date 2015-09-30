@@ -101,11 +101,6 @@ MODULE HCO_tIdx_Mod
      TYPE(TimeIdx), POINTER :: HOURLY
      TYPE(TimeIdx), POINTER :: HOURLY_GRID 
      TYPE(TimeIdx), POINTER :: WEEKDAY
-!------------------------------------------------------------------------------
-! Prior to 2/25/15:
-! This is not used anymore.  Comment out until further notice (bmy, 2/25/15)
-!     TYPE(TimeIdx), POINTER :: WEEKDAY_GRID
-!------------------------------------------------------------------------------
      TYPE(TimeIdx), POINTER :: MONTHLY
   END TYPE TimeIdxCollection
 
@@ -189,17 +184,6 @@ CONTAINS
     AlltIDx%WEEKDAY%TypeID       = 7
     AlltIDx%WEEKDAY%TempRes      = "Weekday"
 
-!------------------------------------------------------------------------------
-! Prior to 2/25/15:
-! This is not used anymore.  Comment out until further notice (bmy, 2/25/15)
-!    ! ----------------------------------------------------------------
-!    ! "WEEKDAY_GRID" => changes every weekday, longitude-independent
-!    ! ----------------------------------------------------------------
-!    ALLOCATE ( AlltIDx%WEEKDAY_GRID )
-!    AlltIDx%WEEKDAY_GRID%TypeID       = 71
-!    AlltIDx%WEEKDAY_GRID%TempRes      = "Weekday_Grid"
-!------------------------------------------------------------------------------
-
     ! ----------------------------------------------------------------
     ! "MONTHLY" => changes every month, longitude-dependent
     ! ----------------------------------------------------------------
@@ -266,13 +250,6 @@ CONTAINS
        CASE ( 7 )
           ctIDx => AlltIDx%WEEKDAY
 
-!------------------------------------------------------------------------------
-! Prior to 2/25/15:
-! This is not used anymore.  Comment out until further notice (bmy, 2/25/15)
-!       CASE ( 71 )
-!          ctIDx => AlltIDx%WEEKDAY_GRID
-!------------------------------------------------------------------------------
-
        CASE ( 12 )
           ctIDx => AlltIDx%MONTHLY
 
@@ -326,14 +303,6 @@ CONTAINS
           DEALLOCATE(AlltIDx%WEEKDAY) 
        ENDIF
 
-!------------------------------------------------------------------------------
-! Prior to 2/25/15:
-! This is not used anymore.  Comment out until further notice (bmy, 2/25/15)
-!       IF ( ASSOCIATED(AlltIDx%WEEKDAY_GRID) ) THEN
-!          DEALLOCATE(AlltIDx%WEEKDAY_GRID) 
-!       ENDIF
-!------------------------------------------------------------------------------
-  
        IF ( ASSOCIATED(AlltIDx%MONTHLY) ) THEN
           DEALLOCATE(AlltIDx%MONTHLY) 
        ENDIF
@@ -953,7 +922,7 @@ CONTAINS
 !
     USE CHARPAK_MOD,        ONLY : STRSPLIT
     USE HCO_FILEDATA_MOD,   ONLY : FileData 
-    USE HCO_CHARTOOLS_MOD,  ONLY : HCO_WCD, HCO_SEP
+    USE HCO_EXTLIST_MOD,    ONLY : HCO_GetOpt
 !
 ! !INPUT PARAMETERS: 
 !
@@ -985,7 +954,7 @@ CONTAINS
     ! character. In this case, we want to update the file on every
     ! HEMCO time step, i.e. it will be added to readlist 'Always'
     ! (in hco_readlist_mod.F90).
-    IF ( TRIM(CharStr) == HCO_WCD() ) THEN
+    IF ( TRIM(CharStr) == HCO_GetOpt('Wildcard') ) THEN
        Dta%UpdtFlag = HCO_UFLAG_ALWAYS
        Dta%ncYrs    = -999 
        Dta%ncMts    = -999 
@@ -1000,7 +969,7 @@ CONTAINS
     TimeVec(:) = -1
 
     ! Extract strings to be translated into integers 
-    CALL STRSPLIT( CharStr, HCO_SEP(), SUBSTR, N )
+    CALL STRSPLIT( CharStr, HCO_GetOpt('Separator'), SUBSTR, N )
     IF ( N /= 4 ) THEN
        MSG = 'Time stamp must have 4 elements: ' // TRIM(CharStr)
        CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
@@ -1019,7 +988,7 @@ CONTAINS
 
        ! For wildcard character, set lower and upper limit both to -1.
        ! In this case, the whole time slice will be read into file!
-       IF ( TRIM(SUBSTR(I)) == TRIM(HCO_WCD() ) ) THEN
+       IF ( TRIM(SUBSTR(I)) == TRIM(HCO_GetOpt('Wildcard') ) ) THEN
           TimeVec(I0:I1) = -1 
 
        ! Characters YYYY, MM, DD, and/or HH can be used to ensure that

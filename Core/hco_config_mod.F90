@@ -238,10 +238,15 @@ CONTAINS
     ! Register HEMCO core as extension Nr. CoreNr (default). The 
     ! core module is used by all HEMCO simulations, and the overall
     ! HEMCO settings are stored as options of this extension.
-    ! Note: cannot use HCO_WCD for species here because HCO_WCD is
-    ! linked to the core extension...
+    ! Note: cannot use HCO_GetOpt('Wildcard') for species here because 
+    ! this is linked to the core extension... 
     IF ( .NOT. ExtNrInUse( CoreNr ) ) THEN
-       CALL AddExt ( 'CORE', CoreNr, 'all' )
+       CALL AddExt ( am_I_Root, 'CORE', CoreNr, 'all', RC )
+       IF ( RC /= HCO_SUCCESS ) THEN
+          WRITE(*,*) 'Error adding CORE extension' 
+          RC = HCO_FAIL
+          RETURN
+       ENDIF
     ENDIF
 
     ! NN counts how many sections have ben read already
@@ -256,7 +261,7 @@ CONTAINS
        IF ( EOF ) EXIT
 
        ! Replace tab characters in LINE (if any) w/ spaces
-       CALL STRREPL( LINE, HCO_TAB(), HCO_SPC() )
+       CALL STRREPL( LINE, HCO_TAB, HCO_SPC )
 
        ! Read settings if this is beginning of settings section 
        IF ( INDEX ( LINE, 'BEGIN SECTION SETTINGS' ) > 0 ) THEN
@@ -460,7 +465,7 @@ CONTAINS
 !
 ! !USES:
 !
-    USE HCO_EXTLIST_MOD,  ONLY : ExtNrInUse
+    USE HCO_EXTLIST_MOD,  ONLY : ExtNrInUse, HCO_GetOpt
     USE HCO_TIDX_Mod,     ONLY : HCO_ExtractTime
     USE HCO_FILEDATA_Mod, ONLY : FileData_Init
     USE HCO_DATACONT_Mod, ONLY : CatMax, ZeroScalID
@@ -485,9 +490,10 @@ CONTAINS
 !  29 Dec 2014 - C. Keller - Added optional 11th element for scale factors. This
 !                            value will be interpreted as mask field (applied to
 !                            this scale factor only).
-!  27 Feb 2015 - C. Keller - Added CycleFlag 4 (interpolation)
+!  27 Feb 2015 - C. Keller - Added CycleFlag 'I' (interpolation)
 !  13 Mar 2015 - C. Keller - Added include files (nested configuration files)
 !                            and CFDIR argument.
+!  23 Sep 2015 - C. Keller - Added cycle flags 'A' and 'RA' (for averaging).
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -510,7 +516,9 @@ CONTAINS
     CHARACTER(LEN=255)        :: srcFile
     CHARACTER(LEN= 31)        :: srcVar
     CHARACTER(LEN= 31)        :: srcTime
-    CHARACTER(LEN=  1)        :: TmCycle 
+    CHARACTER(LEN=  2)        :: TmCycle 
+    CHARACTER(LEN=  1)        :: WildCard
+    CHARACTER(LEN=  1)        :: Separator
     CHARACTER(LEN= 31)        :: srcDim
     CHARACTER(LEN= 31)        :: srcUnit
     CHARACTER(LEN= 31)        :: SpcName 
@@ -537,6 +545,10 @@ CONTAINS
     ! Initialize
     SKIP           = .FALSE.
     nCat           = -1
+
+    ! Get tokens
+    WildCard  = HCO_GetOpt( 'Wildcard'  )
+    Separator = HCO_GetOpt( 'Separator' )
 
     ! Repeat until end of the given section is found 
     DO
@@ -680,7 +692,7 @@ CONTAINS
 
           ! Extract category from character 2. This can be up to 
           ! CatMax integers, or empty. 
-          CALL HCO_CharSplit( Char2, HCO_SEP(), HCO_WCD(), Cats, nCat, RC ) 
+          CALL HCO_CharSplit( Char2, Separator, Wildcard, Cats, nCat, RC ) 
           IF ( RC /= HCO_SUCCESS ) RETURN
           IF ( nCat == 0 ) THEN
              Lct%Dct%Cat = -999
@@ -690,7 +702,7 @@ CONTAINS
 
           ! Set scale factor IDs into Scal_cID. These values will be
           ! replaced lateron with the container IDs (in register_base)!
-          CALL HCO_CharSplit( Char1, HCO_SEP(), HCO_WCD(), &
+          CALL HCO_CharSplit( Char1, Separator, Wildcard, &
                               SplitInts, nScl, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
           IF ( nScl > 0 ) THEN
@@ -788,10 +800,12 @@ CONTAINS
 #endif
 
           ! Set time cycling behaviour. Possible values are: 
-          ! - "C": cycling     (CycleFlag = 1) --> Default
-          ! - "R": range       (CycleFlag = 2)
-          ! - "E": exact       (CycleFlag = 3)
-          ! - "I": interpolate (CycleFlag = 4)
+          ! - "C": cycling --> Default
+          ! - "R": range
+          ! - "E": exact
+          ! - "I": interpolate 
+          ! - "A": average
+          ! - "RA": range, average outside 
           IF ( TRIM(TmCycle) == "R" ) THEN
              Dta%CycleFlag = HCO_CFLAG_RANGE
           ELSEIF ( TRIM(TmCycle) == "E" ) THEN
@@ -800,6 +814,10 @@ CONTAINS
              Dta%CycleFlag = HCO_CFLAG_INTER
           ELSEIF ( TRIM(TmCycle) == "C" ) THEN
              Dta%CycleFlag = HCO_CFLAG_CYCLE
+          ELSEIF ( TRIM(TmCycle) == "A" ) THEN
+             Dta%CycleFlag = HCO_CFLAG_AVERG
+          ELSEIF ( TRIM(TmCycle) == "RA" ) THEN
+             Dta%CycleFlag = HCO_CFLAG_RANGEAVG
           ELSEIF ( TRIM(TmCycle) == "-" ) THEN
              Dta%CycleFlag = HCO_CFLAG_CYCLE
           ELSE
@@ -837,7 +855,7 @@ CONTAINS
           IF ( DctType == HCO_DCTTYPE_MASK ) THEN
                
              ! Extract grid box edges. Need to be four values.
-             CALL HCO_CharSplit ( Char1, HCO_SEP(), HCO_WCD(), & 
+             CALL HCO_CharSplit ( Char1, Separator, Wildcard, & 
                                   SplitInts, N, RC ) 
              IF ( RC /= HCO_SUCCESS ) RETURN
              IF ( N /= 4 ) THEN
@@ -1382,7 +1400,7 @@ CONTAINS
 ! !USES:
 !
     USE CHARPAK_Mod,        ONLY : STRREPL, STRSPLIT, TRANLC
-    USE HCO_EXTLIST_MOD,    ONLY : AddExt, AddExtOpt
+    USE HCO_EXTLIST_MOD,    ONLY : AddExt, AddExtOpt, HCO_GetOpt
 !
 ! !INPUT PARAMETERS:
 !
@@ -1438,21 +1456,21 @@ CONTAINS
        IF ( INDEX ( LINE, 'END SECTION' ) > 0 ) RETURN 
 
        ! Jump to next line if line is commented out
-       IF ( LINE(1:1) == HCO_CMT() ) CYCLE
+       IF ( LINE(1:1) == HCO_CMT ) CYCLE
 
        ! Check if these are options
        IF ( INDEX(LINE,'-->') > 0 ) THEN
           ! Only add if extension is defined!
           IF ( ExtNr >= 0 .AND. Enabled ) THEN 
-             CALL AddExtOpt( TRIM(LINE), ExtNr, RC )
+             CALL AddExtOpt( am_I_Root, TRIM(LINE), ExtNr, RC )
              IF ( RC /= HCO_SUCCESS ) RETURN
           ENDIF
           CYCLE
        ENDIF
 
        ! Split character string
-       CALL STRREPL ( LINE, HCO_TAB(), HCO_TAB() )
-       CALL STRSPLIT( LINE, HCO_SPC(), SUBSTR, N )    
+       CALL STRREPL ( LINE, HCO_TAB, HCO_TAB )
+       CALL STRSPLIT( LINE, HCO_SPC, SUBSTR, N )    
 
        ! Jump to next line if this line is empty
        IF ( N <= 1 ) CYCLE
@@ -1479,10 +1497,11 @@ CONTAINS
           ! idx is the position of the species names
           idx = idx+1 
           READ( SUBSTR(1), * ) ExtNr
-          CALL AddExt ( TRIM(SUBSTR(2)), ExtNr, SUBSTR(idx) )
+          CALL AddExt ( am_I_Root, TRIM(SUBSTR(2)), ExtNr, SUBSTR(idx), RC )
+          IF ( RC /= HCO_SUCCESS ) RETURN
 
           ! Register species (specNames)
-          CALL STRSPLIT( SUBSTR(idx), HCO_SEP(), SPECS, N ) 
+          CALL STRSPLIT( SUBSTR(idx), HCO_GetOpt('Separator'), SPECS, N ) 
           IF ( N < 1 ) THEN
              CALL HCO_ERROR ( 'No species defined', RC, THISLOC=LOC )
              RETURN
@@ -1518,6 +1537,8 @@ CONTAINS
 ! !USES:
 !
     USE HCO_EXTLIST_MOD,    ONLY : AddExtOpt, GetExtOpt, CoreNr
+    USE HCO_EXTLIST_MOD,    ONLY : HCO_SetDefaultToken 
+    USE HCO_EXTLIST_MOD,    ONLY : HCO_GetOpt
     USE CHARPAK_MOD,        ONLY : STRREPL, STRSPLIT, TRANLC
 !
 ! !INPUT PARAMETERS:
@@ -1578,13 +1599,13 @@ CONTAINS
        IF ( INDEX ( LINE, 'END SECTION' ) > 0 ) EXIT 
 
        ! Jump to next line if line is commented out
-       IF ( LINE(1:1) == HCO_CMT() ) CYCLE
+       IF ( LINE(1:1) == HCO_CMT ) CYCLE
 
        ! Ignore empty lines
        IF ( TRIM(LINE) == '' ) CYCLE
 
        ! Add this option to HEMCO core 
-       CALL AddExtOpt ( TRIM(LINE), CoreNr, RC )
+       CALL AddExtOpt ( am_I_Root, TRIM(LINE), CoreNr, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
     ENDDO
@@ -1606,10 +1627,14 @@ CONTAINS
     CALL GetExtOpt( CoreNr, 'Warnings', OptValInt=warn, RC=RC  )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
+    ! Initialize (standard) HEMCO tokens
+    CALL HCO_SetDefaultToken ( am_I_Root, RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
     ! If LogFile is equal to wildcard character, set LogFile to asterik 
     ! character. This will ensure that all output is written to standard
     ! output!
-    IF ( TRIM(LogFile) == HCO_WCD() ) LogFile = '*'
+    IF ( TRIM(LogFile) == HCO_GetOpt('Wildcard') ) LogFile = '*'
 
     ! We should now have everything to define the HEMCO error settings
     CALL HCO_ERROR_SET ( am_I_Root, LogFile, verb, warn, RC )
@@ -1618,8 +1643,8 @@ CONTAINS
     ! Call the chartool routines that may be defined
     ! in the settings. This is to make sure that they
     ! are correctly initialized.
-    CALL HCO_Char_Set( RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN
+!    CALL HCO_Char_Set( RC )
+!    IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Leave w/ success
     RC = HCO_SUCCESS
@@ -2653,7 +2678,7 @@ CONTAINS
     ENDIF
 
     ! Return here with flag = 1 if line is commented 
-    IF ( LINE(1:1) == HCO_CMT() ) THEN
+    IF ( LINE(1:1) == HCO_CMT ) THEN
        STAT = 1
        RETURN
     ENDIF
@@ -2685,8 +2710,8 @@ CONTAINS
     ENDIF 
 
     ! Split line into columns
-    CALL STRREPL ( LINE, HCO_TAB(), HCO_SPC() )
-    CALL STRSPLIT( LINE, HCO_SPC(), SUBSTR, N ) 
+    CALL STRREPL ( LINE, HCO_TAB, HCO_SPC )
+    CALL STRSPLIT( LINE, HCO_SPC, SUBSTR, N ) 
 
     ! Also ignore empty lines 
     IF ( N <= 1 ) THEN
@@ -2805,6 +2830,10 @@ CONTAINS
 !
   SUBROUTINE READINT ( LINE, SUBSTR, N, intcl, intout, OPT, STAT )
 !
+! !USES:
+!
+    USE HCO_EXTLIST_MOD, ONLY : HCO_GetOpt
+!
 ! !INPUT PARAMETERS:
 !
     CHARACTER(LEN=255), INTENT(IN   )    :: LINE 
@@ -2835,7 +2864,7 @@ CONTAINS
           ENDIF
        ELSE
           ! Check for wildcard
-          IF ( SUBSTR(intcl) == HCO_WCD() ) THEN
+          IF ( SUBSTR(intcl) == TRIM(HCO_GetOpt('Wildcard')) ) THEN
              intout = -999
           ELSE
              READ( SUBSTR(intcl), * ) intout
@@ -3374,6 +3403,10 @@ CONTAINS
 !
   SUBROUTINE SpecName_Register( SpecName, RC ) 
 !
+! !USES:
+!
+    USE HCO_EXTLIST_MOD, ONLY : HCO_GetOpt
+!
 ! !INPUT PARAMETERS:
 !
     CHARACTER(LEN=*), INTENT(IN   ) :: SpecName 
@@ -3400,7 +3433,7 @@ CONTAINS
     !======================================================================
 
     ! Ignore if wildcard character. These fields will always be used!
-    IF ( TRIM(SpecName) == TRIM(HCO_WCD() ) ) THEN
+    IF ( TRIM(SpecName) == TRIM(HCO_GetOpt('Wildcard')) ) THEN
        RC = HCO_SUCCESS
        RETURN
     ENDIF
@@ -3823,7 +3856,9 @@ CONTAINS
 !
 ! !LOCAL VARIABLES:
 !
+    INTEGER            :: idx
     INTEGER            :: strLen
+    CHARACTER(LEN=255) :: str1, str2
     CHARACTER(LEN=255) :: MSG    
     CHARACTER(LEN=255) :: LOC = 'ExtractSrcDim (hco_config_mod.F90)' 
 
@@ -3835,14 +3870,25 @@ CONTAINS
           ' for file ' // TRIM(Dta%ncFile) // &
           '. Valid entries are e.g. xy or xyz.'
 
+    ! See if there is an arbitrary additional dimension. This must be added
+    ! at the end of the string and be separated by a '+' sign
+    idx = INDEX( TRIM(srcDim), '+' )
+    IF ( idx > 0 ) THEN
+       str1 = srcDim(1:(idx-1))
+       str2 = srcDim((idx+1):LEN(srcDim))
+    ELSE
+       str1 = srcDim
+       str2 = ''
+    ENDIF
+
     ! 2D data:
-    IF ( TRIM(srcDim) == 'xy' .OR. TRIM(srcDim) == '-' ) THEN
+    IF ( TRIM(str1) == 'xy' .OR. TRIM(str1) == '-' ) THEN
        Dta%SpaceDim = 2
 
     ! All other cases
     ELSE
        ! Character length
-       strLen = LEN(TRIM(srcDim))
+       strLen = LEN(TRIM(str1))
 
        ! There must be at least 3 characters (e.g. xyz)
        IF ( strLen < 3 ) THEN
@@ -3851,7 +3897,7 @@ CONTAINS
        ENDIF
 
        ! First two entries must be xy
-       IF ( srcDim(1:2) /= 'xy' ) THEN
+       IF ( str1(1:2) /= 'xy' ) THEN
           CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
@@ -3859,13 +3905,13 @@ CONTAINS
        ! If third entry is 'L', this means we have 2D data that shall be put
        ! into a particular level, e.g. xyL4 will cause the 2D data to be 
        ! emitted into level 4.
-       IF ( srcDim(3:3) == 'L' .OR. srcDim(3:3) == 'l' ) THEN
+       IF ( str1(3:3) == 'L' .OR. str1(3:3) == 'l' ) THEN
           IF ( strLen < 4 ) THEN
              CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF       
           Dta%SpaceDim = 2
-          READ(srcDim(4:strLen),*) Dta%Lev2D
+          READ(str1(4:strLen),*) Dta%Lev2D
        ELSE
 
           ! If we get to here, it's 3D data 
@@ -3874,9 +3920,50 @@ CONTAINS
           ! The third entry determines the vertical dimension. 
           ! This can be 'z' (standard) or a number to explicitly define
           ! the vertical extension and direction.
-          IF ( srcDim(3:3) /= 'z' ) THEN
-             READ(srcDim(3:strLen),*) Dta%Levels
+          IF ( str1(3:3) /= 'z' ) THEN
+             READ(str1(3:strLen),*) Dta%Levels
           ENDIF
+       ENDIF
+    ENDIF
+
+    ! Eventually set additional dimension name and value
+    IF ( TRIM(str2) /= '' ) THEN
+       MSG = 'Cannot extract arbitrary dimension from ' &
+           // TRIM(srcDim) // ' for file ' // TRIM(Dta%ncFile) &
+           // ' - arbitrary dimensions must follow a `+` sign ' &
+           // 'and contain the name/value pair, e.g. xyz+"ens"=3' 
+       idx = INDEX( TRIM(str2), '=' ) 
+       IF ( idx <= 0 ) THEN
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
+          RETURN
+       ENDIF 
+
+       ! Extract dimension name. Eventually remove '"' character at 
+       ! beginning
+       IF ( str2(1:1) == '"' .OR. &
+            str2(1:1) == '`'       ) THEN
+          Dta%ArbDimName = str2(2:(idx-1))   
+       ELSE
+          Dta%ArbDimName = str2(1:(idx-1))   
+       ENDIF
+
+       ! Extract dimension value. Eventually remove trailing '"'
+       ! character. The string value itself will be evaluated when
+       ! reading the file (in hcoio_dataread_mod.F90).
+       strlen = LEN(TRIM(str2))
+       IF ( str2(strlen:strlen) == '"' .OR. &
+            str2(strlen:strlen) == '`'       ) THEN
+          Dta%ArbDimVal = str2((idx+1):(strlen-1))
+       ELSE
+          Dta%ArbDimVal = str2((idx+1):(strlen))
+       ENDIF
+
+       ! Verbose
+       IF ( am_I_Root .AND. HCO_IsVerb(2) ) THEN
+          WRITE(MSG,*) 'Will use additional dimension on file ', &
+             TRIM(Dta%ncFile), & ': ', TRIM(Dta%ArbDimName), ' = ', &
+             TRIM(Dta%ArbDimVal)
+          CALL HCO_MSG(MSG)
        ENDIF
     ENDIF
 
