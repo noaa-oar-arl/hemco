@@ -417,6 +417,7 @@ CONTAINS
 !  23 Sep 2015 - C. Keller   - Support time averaging (cycle flags A and RA).
 !  06 Oct 2015 - C. Keller   - Support additional horizontal coordinates. Added
 !                              MustFind error checks (cycle flags EF and RF).
+!  22 Nov 2015 - C. Keller   - Bug fix: now use Lun2 if reading second file.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -872,7 +873,7 @@ CONTAINS
           wgt2  = -1.0_sp
 
           ! Read data and write into array ncArr2 
-          CALL NC_READ_ARR( fID     = ncLun,              &
+          CALL NC_READ_ARR( fID     = ncLun2,             &
                             ncVar   = Lct%Dct%Dta%ncPara, &
                             lon1    = 1,                  &
                             lon2    = nlon,               &
@@ -999,7 +1000,7 @@ CONTAINS
              wgt2  = -1.0_sp
             
              ! Read data and write into array ncArr2 
-             CALL NC_READ_ARR( fID     = ncLun,              &
+             CALL NC_READ_ARR( fID     = ncLun2,             &
                                ncVar   = Lct%Dct%Dta%ncPara, &
                                lon1    = 1,                  &
                                lon2    = nlon,               &
@@ -1453,6 +1454,7 @@ CONTAINS
     ! ----------------------------------------------------------------
     ! Close netCDF
     ! ----------------------------------------------------------------
+
     IF ( CloseFile ) THEN
        CALL NC_CLOSE ( ncLun )
        LUN = -1
@@ -2378,7 +2380,7 @@ CONTAINS
        wgt1  = 1.0_sp
        wgt2  = 0.0_sp
 
-    ! If the originally wnated datetime is beyond the available data
+    ! If the originally wanted datetime is beyond the available data
     ! range, set tidx2 to tidx1 but leave weights in their original 
     ! values (-1.0). The reason is that we will attempt to interpolate
     ! between a second file, which is only done if the weights are 
@@ -2418,9 +2420,7 @@ CONTAINS
  
           ! Check if there is a time slice with that date
           DO I = tidx1,nTime
-             write(*,*) 'comparing against ', availYMDh(I)
              IF ( tmpYMDh == availYMDh(I) ) THEN
-                write(*,*) 'match!!'
                 tidx2 = I
                 EXIT
              ENDIF
