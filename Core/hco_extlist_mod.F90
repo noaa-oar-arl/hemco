@@ -1201,20 +1201,26 @@ CONTAINS
 
        ! Can leave here if we shall ignore the option if it already exists
        IF ( Ignore ) THEN
+
+          ! If option exists and is the same, nothing to do 
+          IF ( TRIM(DUM) /= ADJUSTL(TRIM(OptValue)) ) THEN
+             WRITE(*,*) 'Option is already defined - use original value of ', &
+                        TRIM(DUM), ' and ignore the following value: ',       &
+                        TRIM(OptName), ': ', TRIM(OptValue)
+          ENDIF
           RC = HCO_SUCCESS
           RETURN
+
+       ! If ignore flag is false:
        ELSE
-          IF ( TRIM(DUM) /= TRIM(OptValue) ) THEN
+          ! Error if values are not the same
+          IF ( TRIM(DUM) /= ADJUSTL(TRIM(OptValue)) ) THEN
              MSG = 'Cannot add option pair: '//TRIM(OptName)//': '//TRIM(OptValue) &
                 // ' - option already exists: '//TRIM(OptName)//': '//TRIM(DUM)
              CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
              RETURN
-
-          ! If option exists and is the same, nothing to do 
+          ! Return with no error if values are the same
           ELSE
-             WRITE(*,*) 'Option is already defined - use original value of ', &
-                        TRIM(DUM), ' and ignore the following value: ',       &
-                        TRIM(OptName), ': ', TRIM(OptValue)
              RC = HCO_SUCCESS
              RETURN
           ENDIF
@@ -1312,7 +1318,7 @@ CONTAINS
     ELSE
        ThisExtNr = -999
     ENDIF
- 
+
     ! Find extension of interest 
     ThisExt => ExtList
     DO WHILE ( ASSOCIATED ( ThisExt ) ) 
@@ -1329,7 +1335,7 @@ CONTAINS
        DO WHILE ( ASSOCIATED(ThisOpt) ) 
 
           ! Check if this is the token of interest
-          IF ( TRIM(ThisOpt%OptName) == TRIM(OptName) ) THEN
+          IF ( TRIM(ThisOpt%OptName) == ADJUSTL(TRIM(OptName)) ) THEN
              OptValue = ADJUSTL( TRIM(ThisOpt%OptValue) )
              OptFound = .TRUE.
              EXIT
