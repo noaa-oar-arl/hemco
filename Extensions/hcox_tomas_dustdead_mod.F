@@ -1,3 +1,4 @@
+#if defined( TOMAS )
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
@@ -40,7 +41,7 @@
 !
 ! !INTERFACE:
 !
-      MODULE HCOX_DUSTDEAD_MOD
+      MODULE HCOX_TOMAS_DustDead_Mod
 !
 ! !USES:
 !
@@ -54,10 +55,10 @@
 !
 ! !PUBLIC MEMBER FUNCTIONS:
 !
-      PUBLIC :: HCOX_DustDead_Run
-      PUBLIC :: HCOX_DustDead_Init
-      PUBLIC :: HCOX_DustDead_Final
-      PUBLIC :: HCOX_DustDead_GetFluxTun
+      PUBLIC :: HCOX_TOMAS_DustDead_Run
+      PUBLIC :: HCOX_TOMAS_DustDead_Init
+      PUBLIC :: HCOX_TOMAS_DustDead_Final
+      PUBLIC :: HCOX_TOMAS_DustDead_GetFluxTun
 !
 ! !REVISION HISTORY:
 !  (1 ) Added parallel DO loop in GET_ORO (bmy, 4/14/04)
@@ -69,10 +70,9 @@
 !  (7 ) Modifications for 0.5 x 0.667 grid (yxw, dan, bmy, 11/6/08)
 !  (8 ) Updates for nested grids (amv, bmy, 12/18/09)
 !  01 Mar 2012 - R. Yantosca - Now reference new grid_mod.F90
-!  25 Nov 2013 - C. Keller   - Now a HEMCO extension
-!  06 Oct 2014 - C. Keller   - Allow mass flux tuning factor be set in
-!                              configuration file.
-!  08 Jul 2015 - M. Sulprizio- Now include dust alkalinity source (tdf 04/10/08)
+!  25 Nov 2013 - C. Keller - Now a HEMCO extension
+!  06 Oct 2014 - C. Keller - Allow mass flux tuning factor be set in
+!                            configuration file.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -80,11 +80,11 @@
 ! !MODULE VARIABLES:
 !
       ! Fields required by module
-      INTEGER                   :: ExtNr           ! Extension num for DustDead
-      INTEGER                   :: ExtNrAlk        ! Extension num for DustAlk
-      INTEGER, PARAMETER        :: NBINS = 4       ! # of dust bins 
-      INTEGER, ALLOCATABLE      :: HcoIDs(:)       ! tracer IDs for DustDead
-      INTEGER, ALLOCATABLE      :: HcoIDsAlk(:)    ! tracer IDs for DustAlk
+      INTEGER                   :: ExtNr           ! Extension number
+! JKodros - want to change number of bins, but cant reference HcoState%MicroPhys?
+
+      INTEGER, PARAMETER        :: NBINS = 15
+      INTEGER, ALLOCATABLE      :: HcoIDs(:)       ! tracer IDs
       REAL*8                    :: FLX_MSS_FDG_FCT
 
       !---------------------------------------
@@ -173,7 +173,7 @@
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_DustDead_Run 
+! !IROUTINE: HCOX_TOMAS_DustDead_Run 
 !
 ! !DESCRIPTION: Subroutine HcoX\_DustDead\_Run is the driver routine 
 ! for the HEMCO DEAD dust extension.
@@ -181,13 +181,15 @@
 !\\
 ! !INTERFACE:
 !
-      SUBROUTINE HCOX_DustDead_Run( am_I_Root, ExtState, HcoState, RC )
+      SUBROUTINE HCOX_TOMAS_DustDead_Run( am_I_Root, ExtState, HcoState
+     & , RC )
 !
 ! !USES:
 !
       USE HCO_EMISLIST_MOD,  ONLY : HCO_GetPtr
       USE HCO_FLUXARR_MOD,   ONLY : HCO_EmisAdd 
       USE HCO_CLOCK_MOD,     ONLY : HcoClock_Get
+      USE HCO_State_Mod,    ONLY : HCO_GetHcoID
 !
 ! !INPUT PARAMETERS:
 !
@@ -217,10 +219,10 @@
 !  01 Mar 2012 - R. Yantosca - Now use GET_YMID_R(I,J,L) from grid_mod.F90
 !  09 Nov 2012 - M. Payer    - Replaced all met field arrays with State_Met
 !                              derived type object
-!  25 Nov 2013 - C. Keller   - Now a HEMCO extension
-!  06 Oct 2014 - C. Keller   - Now calculate pressure center from edges.
-!  26 Jun 2015 - E. Lundgren - Add L. Zhang new dust size distribution scheme
-!  08 Jul 2015 - M. Sulprizio- Now include dust alkalinity source (tdf 04/10/08)
+!  25 Nov 2013 - C. Keller - Now a HEMCO extension
+!  06 Oct 2014 - C. Keller - Now calculate pressure center from edges.
+!
+! !NOTES: 
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -250,11 +252,18 @@
       REAL*8                 :: Q_H2O(HcoState%NX)         ! specific humidity (L=1)
       REAL*8                 :: ORO(HcoState%NX)           ! "orography" 
       REAL*8                 :: SNW_HGT_LQD(HcoState%NX)   ! equivalent snow ht.
-      REAL*8                 :: DSRC(HcoState%NX,NBINS)    ! dust mixing ratio incr.
-      REAL*8                 :: DUST_EMI_TOTAL(HcoState%NX) ! total dust emiss
-      REAL(hp), TARGET       :: FLUX(HcoState%NX,HcoState%NY,NBINS) ! Flux array [kg/m2/s]   
-      REAL(hp), TARGET       :: FLUX_ALK(HcoState%NX,HcoState%NY,NBINS) ! Flux array for dust alkalinity [kg/m2/s]   
+      REAL*8                 :: DSRC(HcoState%NX,
+     & HcoState%MicroPhys%nBins)    ! dust mixing ratio incr.
+      REAL(hp), TARGET       :: FLUX(HcoState%NX,HcoState%NY, 
+     & HcoState%MicroPhys%nBins) ! Flux array [kg/m2/s]   
+      ! JKodros
+      REAL(hp), TARGET       :: FLUXN(HcoState%NX,HcoState%NY,
+     & HcoState%MicroPhys%nBins) ! Flux NUMB array [number units??]   
       LOGICAL,  SAVE         :: FIRST = .TRUE.
+!     Strings, JKodros
+      CHARACTER(LEN=31)      :: SpcName
+
+      INTEGER                :: HcoID
 !
 ! !DEFINED PARAMETERS:
 !
@@ -267,16 +276,20 @@
       REAL*8, PARAMETER      :: AKAP    = RGAS     / CP
       REAL*8, PARAMETER      :: P1000   = 1000d0
       CHARACTER(LEN=255)     :: MSG
+      
+      ! temp debugging - jkodros
+      INTEGER                :: jj=30, ii=40
 
       !=================================================================
       ! HCOX_DUSTDEAD_RUN begins here!
       !=================================================================
 
       ! Return if extension disabled 
-      IF ( .NOT. ExtState%DustDead ) RETURN
+      IF ( .NOT. ExtState%TOMAS_DustDead ) RETURN
 
       ! Enter
-      CALL HCO_ENTER ( 'HCOX_DustDead_Run (hcox_dustdead_mod.F90)', RC )
+      CALL HCO_ENTER ( 'HCOX_TOMAS_DustDead_Run 
+     & (hcox_tomas_dustdead_mod.F)', RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
       ! am I root? 
@@ -347,8 +360,7 @@
       DOY = intDOY
 
       ! Init
-      FLUX(:,:,:)     = 0.0_hp
-      FLUX_ALK(:,:,:) = 0.0_hp
+      FLUX(:,:,:) = 0.0_hp
 
       ! Error check
       ERR = .FALSE.
@@ -357,7 +369,7 @@
 !$OMP+DEFAULT( SHARED )
 !$OMP+PRIVATE( I,     J,      P1,    P2,   PTHICK,  PMID, TLON        )
 !$OMP+PRIVATE( THLON, ULON,   VLON,  BHT2, Q_H2O,   ORO,  SNW_HGT_LQD )
-!$OMP+PRIVATE( N,     YMID_R, DSRC,  RC,   AREA_M2, DUST_EMI_TOTAL    )
+!$OMP+PRIVATE( N,     YMID_R, DSRC,  RC,   AREA_M2                    )
 
       ! Loop over latitudes
       DO J = 1, HcoState%NY 
@@ -427,17 +439,6 @@
             CYCLE 
          ENDIF 
 
-         ! Redistribute dust emissions using new dust size distribution
-         ! scheme (L. Zhang, 6/26/15)
-         DUST_EMI_TOTAL = 0.0d0  
-         DO N = 1, NBINS
-            DUST_EMI_TOTAL(:) = DUST_EMI_TOTAL(:) + DSRC(:,N)
-         ENDDO
-         DSRC(:,1) = DUST_EMI_TOTAL(:) * 0.0766d0
-         DSRC(:,2) = DUST_EMI_TOTAL(:) * 0.1924d0
-         DSRC(:,3) = DUST_EMI_TOTAL(:) * 0.3491d0
-         DSRC(:,4) = DUST_EMI_TOTAL(:) * 0.3819d0
-
          ! Write to emissions array
          DO I = 1, HcoState%NX 
 
@@ -445,19 +446,12 @@
             ! Write into flux array: kg/box --> kg/m2/s
             AREA_M2 = HcoState%Grid%AREA_M2%Val( I, J )
             DO N = 1, NBINS
-
                IF ( HcoIDs(N) > 0 ) THEN
                   FLUX(I,J,N) = ( DSRC(I,N) / AREA_M2 / DTSRCE )
+                  FLUXN(I,J,N) = FLUX(I,J,N)/
+     &                 (SQRT( HcoState%MicroPhys%BinBound(N  ) *    
+     &                             HcoState%MicroPhys%BinBound(N+1)   ))
                ENDIF
-
-               ! Include DUST Alkalinity SOURCE, assuming an alkalinity
-               ! of 4% by weight [kg].                  !tdf 05/10/08
-               !tdf with 3% Ca, there's also 1% equ. Mg, makes 4%
-               IF ( ExtNrAlk > 0 ) THEN
-                  FLUX_ALK(I,J,N) = 0.04 * ( DSRC(I,N) / AREA_M2 /
-     &                              DTSRCE )
-               ENDIF
-
             ENDDO !N
          ENDDO !I
       ENDDO !J 
@@ -472,50 +466,87 @@
       !=================================================================
       ! PASS TO HEMCO STATE AND UPDATE DIAGNOSTICS 
       !=================================================================
-      DO N = 1, NBINS
-
+      DO N = 1, HcoState%MicroPhys%nBins
          IF ( HcoIDs(N) > 0 ) THEN
-
+            !print*, 'DUST EMISS: ', FLUX(ii,jj,N)
+            !print*, 'DUST EMISS TOT: ', sum(FLUX(:,:,N))
             ! Add to emissions array
             CALL HCO_EmisAdd( am_I_Root, HcoState, FLUX(:,:,N), 
-     &                        HcoIDs(N), RC,       ExtNr=ExtNr )
+     &                        HcoIDs(N), RC, ExtNr=ExtNr )
             IF ( RC /= HCO_SUCCESS ) THEN
                WRITE(MSG,*) 'HCO_EmisAdd error: dust bin ', N
                CALL HCO_ERROR( MSG, RC )
                RETURN 
             ENDIF
 
-         ENDIF
+! Get the proper species name
+!%%% This is a kludge, do better later %%%
+            IF ( N==1  ) SpcName = 'NK1'
+            IF ( N==2  ) SpcName = 'NK2'
+            IF ( N==3  ) SpcName = 'NK3'
+            IF ( N==4  ) SpcName = 'NK4'
+            IF ( N==5  ) SpcName = 'NK5'
+            IF ( N==6  ) SpcName = 'NK6'
+            IF ( N==7  ) SpcName = 'NK7'
+            IF ( N==8  ) SpcName = 'NK8'
+            IF ( N==9  ) SpcName = 'NK9'
+            IF ( N==10 ) SpcName = 'NK10'
+            IF ( N==11 ) SpcName = 'NK11'
+            IF ( N==12 ) SpcName = 'NK12'
+            IF ( N==13 ) SpcName = 'NK13'
+            IF ( N==14 ) SpcName = 'NK14'
+            IF ( N==15 ) SpcName = 'NK15'
+            IF ( N==16 ) SpcName = 'NK16'
+            IF ( N==17 ) SpcName = 'NK17'
+            IF ( N==18 ) SpcName = 'NK18'
+            IF ( N==19 ) SpcName = 'NK19'
+            IF ( N==20 ) SpcName = 'NK20'
+            IF ( N==21 ) SpcName = 'NK21'
+            IF ( N==22 ) SpcName = 'NK22'
+            IF ( N==23 ) SpcName = 'NK23'
+            IF ( N==24 ) SpcName = 'NK24'
+            IF ( N==25 ) SpcName = 'NK25'
+            IF ( N==26 ) SpcName = 'NK26'
+            IF ( N==27 ) SpcName = 'NK27'
+            IF ( N==28 ) SpcName = 'NK28'
+            IF ( N==29 ) SpcName = 'NK29'
+            IF ( N==30 ) SpcName = 'NK30'
+            IF ( N==31 ) SpcName = 'NK31'
+            IF ( N==32 ) SpcName = 'NK32'
+            IF ( N==33 ) SpcName = 'NK33'
+            IF ( N==34 ) SpcName = 'NK34'
+            IF ( N==35 ) SpcName = 'NK35'
+            IF ( N==36 ) SpcName = 'NK36'
+            IF ( N==37 ) SpcName = 'NK37'
+            IF ( N==38 ) SpcName = 'NK38'
+            IF ( N==39 ) SpcName = 'NK39'
+            IF ( N==40 ) SpcName = 'NK40'
 
-         IF ( ExtNrAlk > 0 ) THEN
-            IF ( HcoIDsAlk(N) > 0 ) THEN
+       ! HEMCO species ID
+            HcoID = HCO_GetHcoID( TRIM(SpcName), HcoState )
 
-               ! Add to dust alkalinity emissions array
-               CALL HCO_EmisAdd( am_I_Root,       HcoState,
-     &                           FLUX_Alk(:,:,N), HcoIDsAlk(N),
-     &                           RC,              ExtNr=ExtNrAlk )
-               IF ( RC /= HCO_SUCCESS ) THEN
-                  WRITE(MSG,*) 'HCO_EmisAdd error: dust alk bin ', N
-                  CALL HCO_ERROR( MSG, RC )
-                  RETURN 
-               ENDIF
-
+! Add number to the HEMCO data structure
+            CALL HCO_EmisAdd( am_I_Root, HcoState, FLUXN(:,:,N), HcoID
+     &           , RC)
+            IF ( RC /= HCO_SUCCESS ) THEN
+               CALL HCO_ERROR( 'HCO_EmisAdd error: FLUXNDUST', RC )
+               RETURN
             ENDIF
-         ENDIF
 
+         ENDIF
       ENDDO !N
 
       ! Return w/ success
       CALL HCO_LEAVE ( RC )
 
-      END SUBROUTINE HCOX_DustDead_Run
+      END SUBROUTINE HCOX_TOMAS_DustDead_Run
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_DustDead_Init
+! !IROUTINE: HCOX_TOMAS_DustDead_Init
 !
 ! !DESCRIPTION: Subroutine HcoX\_DustDead\_Init initializes the HEMCO
 ! DUST\_DEAD extension.
@@ -523,8 +554,8 @@
 !\\
 ! !INTERFACE:
 !
-      SUBROUTINE HCOX_DustDead_Init ( am_I_Root, HcoState, ExtName,
-     &                                ExtState,  RC                )
+      SUBROUTINE HCOX_TOMAS_DustDead_Init ( am_I_Root, HcoState
+     &                             ,ExtName, ExtState,    RC     )
 !
 ! !USES:
 !
@@ -552,11 +583,9 @@
 ! !LOCAL VARIABLES:
 !
       CHARACTER(LEN=255)             :: MSG
-      INTEGER                        :: I, J, N, AS
+      INTEGER                        :: I, J, N, AS, k
       INTEGER                        :: nSpc
-      INTEGER                        :: nSpcAlk
       CHARACTER(LEN=31), ALLOCATABLE :: SpcNames(:)
-      CHARACTER(LEN=31), ALLOCATABLE :: SpcNamesAlk(:)
       REAL(dp)                       :: TmpScal
       LOGICAL                        :: FOUND
 
@@ -568,11 +597,9 @@
       ExtNr = GetExtNr( TRIM(ExtName) )
       IF ( ExtNr <= 0 ) RETURN
 
-      ! Check for dust alkalinity option
-      ExtNrAlk = GetExtNr('DustAlk')
-
       ! Enter
-      CALL HCO_ENTER ('HCOX_DustDead_Init (hcox_dustdead_mod.F90)', RC )
+      CALL HCO_ENTER ('HCOX_TOMAS_DustDead_Init 
+     & (hcox_tomas_dustdead_mod.F)', RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
       ! Get horizontal dimensions
@@ -585,13 +612,6 @@
 
       CALL HCO_GetExtHcoID( HcoState, ExtNr, HcoIDs, SpcNames, nSpc, RC)
       IF ( RC /= HCO_SUCCESS ) RETURN
-
-      ! Get the dust alkalinity species defined for DustAlk option
-      IF ( ExtNrAlk > 0 ) THEN
-         CALL HCO_GetExtHcoID( HcoState,    ExtNrAlk, HcoIDsAlk,
-     &                         SpcNamesAlk, nSpcAlk,  RC)
-         IF ( RC /= HCO_SUCCESS ) RETURN
-      ENDIF
 
       ! Sanity check
       IF ( nSpc /= NBINS ) THEN
@@ -612,7 +632,7 @@
       IF ( FOUND ) THEN
          FLX_MSS_FDG_FCT = TmpScal
       ELSE
-         FLX_MSS_FDG_FCT = HCOX_DustDead_GetFluxTun( am_I_Root )
+         FLX_MSS_FDG_FCT = HCOX_TOMAS_DustDead_GetFluxTun( am_I_Root )
          IF ( FLX_MSS_FDG_FCT < 0.0_dp ) THEN
             RC = HCO_FAIL
             RETURN
@@ -624,27 +644,15 @@
          MSG = 'Use DEAD dust emissions (extension module)'
          CALL HCO_MSG( MSG, SEP1='-' )
    
-         IF ( ExtNrAlk > 0 ) THEN
-            MSG = 'Use dust alkalinity option'
-            CALL HCO_MSG ( MSG, SEP1='-' )
-         ENDIF
-
          MSG = 'Use the following species (Name: HcoID):' 
          CALL HCO_MSG(MSG)
          DO N = 1, nSpc
             WRITE(MSG,*) TRIM(SpcNames(N)), ':', HcoIDs(N)
             CALL HCO_MSG(MSG)
          ENDDO
-         IF ( ExtNrAlk > 0 ) THEN
-            DO N = 1, nSpcAlk
-               WRITE(MSG,*) TRIM(SpcNamesAlk(N)), ':', HcoIDsAlk(N)
-               CALL HCO_MSG(MSG)
-            ENDDO
-         ENDIF
             
          WRITE(MSG,*) 'Global mass flux tuning factor: ',FLX_MSS_FDG_FCT
          CALL HCO_MSG(MSG,SEP2='-')
-
       ENDIF
 
       !-----------------------------------------------------------------
@@ -749,28 +757,59 @@
         RETURN
       ENDIF
       OROGRAPHY = 0
-
+      
+!----------------------------------------------------------------
+!   JKODROS - TESTING TO GET DUST IN WITH TOMAS
+!----------------------------------------------------------------
       ! Bin size min diameter [m]
       ALLOCATE( DMT_MIN( NBINS ), STAT=AS )
-      IF ( AS /= 0 ) THEN 
+      IF ( AS /= 0 ) THEN
         CALL HCO_ERROR ( 'DMT_MIN', RC )
         RETURN
       ENDIF
-      DMT_MIN(1) = 0.2d-6
-      DMT_MIN(2) = 2.0d-6
-      DMT_MIN(3) = 3.6d-6
-      DMT_MIN(4) = 6.0d-6
+
+      DO k=1,HcoState%MicroPhys%nBins
+         DMT_MIN(k) = (HcoState%MicroPhys%BinBound(k)/2650.*6./3.14159)
+     & **(1.d0/3.d0)
+      ENDDO   
 
       ! Bin size max diameter [m]
       ALLOCATE( DMT_MAX( NBINS ), STAT=AS )
-      IF ( AS /= 0 ) THEN 
+      IF ( AS /= 0 ) THEN
         CALL HCO_ERROR ( 'DMT_MAX', RC )
         RETURN
       ENDIF
-      DMT_MAX(1) = 2.0d-6
-      DMT_MAX(2) = 3.6d-6
-      DMT_MAX(3) = 6.0d-6
-      DMT_MAX(4) = 1.2d-5
+
+      DO k=1,HcoState%MicroPhys%nBins
+         DMT_MAX(k) = (HcoState%MicroPhys%BinBound(k+1)
+     & /2650.*6./3.14159)**(1.d0/3.d0)
+      ENDDO   
+
+!----------------------------------------------------------------
+!   JKODROS - TESTING TO GET DUST IN WITH TOMAS
+!----------------------------------------------------------------
+
+      ! Bin size min diameter [m]
+!      ALLOCATE( DMT_MIN( NBINS ), STAT=AS )
+!      IF ( AS /= 0 ) THEN 
+!        CALL HCO_ERROR ( 'DMT_MIN', RC )
+!        RETURN
+!      ENDIF
+!      DMT_MIN(1) = 0.2d-6
+!      DMT_MIN(2) = 2.0d-6
+!      DMT_MIN(3) = 3.6d-6
+!      DMT_MIN(4) = 6.0d-6
+
+      ! Bin size max diameter [m]
+!      ALLOCATE( DMT_MAX( NBINS ), STAT=AS )
+!      IF ( AS /= 0 ) THEN 
+!        CALL HCO_ERROR ( 'DMT_MAX', RC )
+!        RETURN
+!      ENDIF
+!      DMT_MAX(1) = 2.0d-6
+!      DMT_MAX(2) = 3.6d-6
+!      DMT_MAX(3) = 6.0d-6
+!      DMT_MAX(4) = 1.2d-5
 
       ! DMT_VMA_SRC: D'Almeida's (1987) "Background" modes
       ! as default [m]  (Zender et al. p.5 Table 1)
@@ -845,21 +884,20 @@
       ExtState%WLI%DoUse     = .TRUE.
 
       ! Activate this extension
-      ExtState%DustDead = .TRUE.
+      ExtState%TOMAS_DustDead = .TRUE.
 
       ! Leave w/ success
-      IF ( ALLOCATED(SpcNames   ) ) DEALLOCATE(SpcNames   )
-      IF ( ALLOCATED(SpcNamesAlk) ) DEALLOCATE(SpcNamesAlk)
+      IF ( ALLOCATED(SpcNames) ) DEALLOCATE(SpcNames)
       CALL HCO_LEAVE ( RC ) 
 
-      END SUBROUTINE HCOX_DustDead_Init
+      END SUBROUTINE HCOX_TOMAS_DustDead_Init
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_DustDead_Final
+! !IROUTINE: HCOX_TOMAS_DustDead_Final
 !
 ! !DESCRIPTION: Subroutine HcoX\_DustDead\_Final finalizes the HEMCO
 ! DUST\_DEAD extension.
@@ -867,7 +905,7 @@
 !\\
 ! !INTERFACE:
 !
-      SUBROUTINE HCOX_DustDead_Final
+      SUBROUTINE HCOX_TOMAS_DustDead_Final
 !
 ! !REVISION HISTORY:
 !  25 Nov 2013 - C. Keller - Now a HEMCO extension
@@ -916,9 +954,8 @@
       IF ( ALLOCATED( GSD_ANL_SRC     ) ) DEALLOCATE( GSD_ANL_SRC     )
       IF ( ALLOCATED( MSS_FRC_SRC     ) ) DEALLOCATE( MSS_FRC_SRC     )
       IF ( ALLOCATED( HcoIDs          ) ) DEALLOCATE( HcoIDs          )
-      IF ( ALLOCATED( HcoIDsALK       ) ) DEALLOCATE( HcoIDsALK       )
 
-      END SUBROUTINE HCOX_DustDead_Final
+      END SUBROUTINE HCOX_TOMAS_DustDead_Final
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
@@ -5364,7 +5401,7 @@ c Fix up for negative argument, erf, etc.
 
 !******************************************************************************
 
-      FUNCTION HCOX_DustDead_GetFluxTun( am_I_Root ) 
+      FUNCTION HCOX_TOMAS_DustDead_GetFluxTun( am_I_Root ) 
      & RESULT( FLX_MSS_FDG_FCT )
 !
 !******************************************************************************
@@ -5383,7 +5420,7 @@ c Fix up for negative argument, erf, etc.
       INTEGER             :: RC
 
       !=================================================================
-      ! HCOX_DustDead_GetFluxTun begins here!
+      ! HCOX_TOMAS_DustDead_GetFluxTun begins here!
       !=================================================================
 
       ! Global mass flux tuning factor (a posteriori) [frc]
@@ -5537,15 +5574,17 @@ c Fix up for negative argument, erf, etc.
      &      'please explicitly set it by adding ' //
      &      '` --> Mass tuning factor: XX.X` to the extension ' //
      &      'options in your config. file.'
-         CALL HCO_ERROR ( MSG, RC, THISLOC='HCOX_DustDead_GetFluxTun')
+         CALL HCO_ERROR ( MSG, RC, 
+     & THISLOC='HCOX_TOMAS_DustDead_GetFluxTun')
       RETURN
 
 #endif
 
       ! Return to calling program
-      END FUNCTION HCOX_DustDead_GetFluxTun
+      END FUNCTION HCOX_TOMAS_DustDead_GetFluxTun
 
 !------------------------------------------------------------------------------
 !EOC
-      END MODULE HCOX_DUSTDEAD_MOD
+      END MODULE HCOX_TOMAS_DustDead_Mod
 !EOM
+#endif
