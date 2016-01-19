@@ -191,8 +191,11 @@ CONTAINS
     USE Ncdf_Mod,            ONLY : NC_Close
     USE Ncdf_Mod,            ONLY : NC_Var_Def
     USE Ncdf_Mod,            ONLY : NC_Var_Write
+    USE Ncdf_Mod,            ONLY : NC_Get_RefDateTime
+    USE CHARPAK_Mod,         ONLY : TRANLC
     USE HCO_State_Mod,       ONLY : HCO_State
     USE JulDay_Mod,          ONLY : JulDay
+    USE HCO_ExtList_Mod,     ONLY : GetExtOpt, CoreNr
     USE HCO_Clock_Mod
 !
 ! !INPUT PARAMETERS:
@@ -219,6 +222,7 @@ CONTAINS
 !                              out lon & lat as float instead of double
 !  06 Nov 2015 - C. Keller   - Output time stamp is now determined from 
 !                              variable OutTimeStamp.
+!  19 Jan 2016 - C. Keller   - Added DiagnRefTime option.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -239,15 +243,18 @@ CONTAINS
     CHARACTER(LEN=255)        :: ncFile
     CHARACTER(LEN=255)        :: Pfx 
     CHARACTER(LEN=255)        :: MSG 
+    CHARACTER(LEN=255)        :: RefTime 
     CHARACTER(LEN=4 )         :: Yrs
     CHARACTER(LEN=2 )         :: Mts, Dys, hrs, mns 
-    CHARACTER(LEN=31)         :: timeunit, myName, myUnit, OutOper
+    CHARACTER(LEN=31)         :: myName, myUnit, OutOper
+    CHARACTER(LEN=63)         :: timeunit
     INTEGER                   :: fId, lonId, latId, levId, TimeId
     INTEGER                   :: VarCt
     INTEGER                   :: nLon, nLat, nLev, nTime 
     INTEGER                   :: Prc
     INTEGER                   :: lymd, lhms 
-    LOGICAL                   :: EOI, DoWrite, PrevTime
+    INTEGER                   :: refYYYY, refMM, refDD, refh, refm, refs 
+    LOGICAL                   :: EOI, DoWrite, PrevTime, FOUND
  
     CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_DIAGN_WRITEOUT (hcoio_diagn_mod.F90)' 
 
@@ -383,12 +390,48 @@ CONTAINS
     deallocate(Int1D)
 
     ! Add time 
-    timeunit = 'hours since 1985-01-01 00:00:00 GMT'
-    GMT = REAL(h,dp) + (REAL(m,dp)/60.0_dp) + (REAL(s,dp)/3600.0_dp)
-    THISDAY  = DD + ( GMT / 24.0_dp )
-    JD1      = JULDAY ( YYYY, MM, THISDAY )
-    JD1985   = JULDAY ( 1985, 1,  0.0_dp  ) + 1.0_dp
-    JD_DELTA = (JD1 - JD1985 ) * 24.0_dp
+    ! JD1 is the julian day of the data slice
+    GMT     = REAL(h,dp) + (REAL(m,dp)/60.0_dp) + (REAL(s,dp)/3600.0_dp)
+    THISDAY = DD + ( GMT / 24.0_dp )
+    JD1     = JULDAY ( YYYY, MM, THISDAY )
+
+    ! Check if reference time is given in HEMCO configuration file
+    CALL GetExtOpt ( CoreNr, 'DiagnRefTime', &
+                     OptValChar=RefTime, Found=Found, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Use specified reference time (if given)
+    IF ( Found ) THEN
+       timeunit = ADJUSTL(TRIM(RefTime))
+       CALL TRANLC( timeunit )
+       CALL NC_GET_REFDATETIME( timeunit, refYYYY, refMM, refDD, refh, refm, refs, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
+       
+       GMT     = REAL(MAX(refh,0),dp) + (REAL(MAX(refm,0),dp)/60.0_dp) + (REAL(MAX(refs,0),dp)/3600.0_dp)
+       THISDAY = refDD + ( GMT / 24.0_dp )
+       JD1985  = JULDAY ( refYYYY, refMM, THISDAY ) 
+    ELSE
+       WRITE(timeunit,100) YYYY,MM,DD,h,m,s
+       JD1985 = JD1
+    ENDIF
+100 FORMAT ( 'hours since ',i4.4,'-',i2.2,'-',i2.2,' ',i2.2,':',i2.2,':',i2.2,' GMT' )
+
+    ! Calculate time since reference datetime
+    JD_DELTA = (JD1 - JD1985 ) 
+
+    ! Adjust to correct units. Default is 'days since'
+    IF ( timeunit(1:4) == 'days' ) THEN
+       ! all ok
+    ELSEIF ( timeunit(1:5) == 'hours' ) THEN
+       JD_DELTA = JD_DELTA * 24.0_dp
+    ELSEIF ( timeunit(1:7) == 'minutes' ) THEN
+       JD_DELTA = JD_DELTA * 24.0_dp * 60.0_dp
+    ELSEIF ( timeunit(1:7) == 'seconds' ) THEN
+       JD_DELTA = JD_DELTA * 24.0_dp * 3600.0_dp
+    ELSE
+       MSG = 'Unrecognized output reference time unit, will assume `days since`: '//TRIM(timeunit)
+       CALL HCO_WARNING( MSG, WARNLEV=2, THISLOC=LOC, RC=RC )
+    ENDIF
 
     ! Round to 2 digits after comma 
     JD_DELTA_RND = REAL(JD_DELTA,sp) * 100.0_sp
