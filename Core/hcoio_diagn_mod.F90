@@ -222,7 +222,7 @@ CONTAINS
 !                              out lon & lat as float instead of double
 !  06 Nov 2015 - C. Keller   - Output time stamp is now determined from 
 !                              variable OutTimeStamp.
-!  19 Jan 2016 - C. Keller   - Added DiagnRefTime option.
+!  20 Jan 2016 - C. Keller   - Added options DiagnRefTime and DiagnNoLevDim.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -255,6 +255,7 @@ CONTAINS
     INTEGER                   :: lymd, lhms 
     INTEGER                   :: refYYYY, refMM, refDD, refh, refm, refs 
     LOGICAL                   :: EOI, DoWrite, PrevTime, FOUND
+    LOGICAL                   :: NoLevDim 
  
     CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_DIAGN_WRITEOUT (hcoio_diagn_mod.F90)' 
 
@@ -311,6 +312,41 @@ CONTAINS
     ENDIF
 
     !-----------------------------------------------------------------
+    ! Don't define level dimension if there are no 3D fields to write
+    ! This is an optional feature. By default, all diagnostics have
+    ! the full dimension definitions (lon,lat,lev,time) even if all
+    ! output fields are only 2D. If the flag DiagnNoLevDim is 
+    ! enabled, the lev dimension is not defined if there are no 3D
+    ! fields on the file. 
+    !-----------------------------------------------------------------
+    NoLevDim = .FALSE.
+    CALL GetExtOpt ( CoreNr, 'DiagnNoLevDim', &
+                     OptValBool=NoLevDim, Found=Found, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    IF ( Found ) THEN 
+       IF ( NoLevDim ) THEN
+
+          ! Loop over all diagnostics to see if any is 3D
+          ThisDiagn => NULL()
+          DO WHILE ( .TRUE. )
+
+             ! Get next diagnostics in list. This will return the next 
+             ! diagnostics container that contains content. 
+             CALL Diagn_Get ( am_I_Root, EOI, ThisDiagn, FLAG, RC, COL=PS ) 
+             IF ( RC /= HCO_SUCCESS ) RETURN 
+             IF ( FLAG /= HCO_SUCCESS ) EXIT
+              
+             ! If this is a 3D diagnostics, we must write the level 
+             ! coordinate
+             IF ( ThisDiagn%SpaceDim == 3 ) THEN
+                NoLevDim = .FALSE.
+                EXIT
+             ENDIF
+          ENDDO
+       ENDIF
+    ENDIF
+
+    !-----------------------------------------------------------------
     ! Create output file
     !-----------------------------------------------------------------
 
@@ -354,10 +390,19 @@ CONTAINS
        MSG = 'Write diagnostics into file '//TRIM(ncFile)
        CALL HCO_MSG( MSG )
     ENDIF
+    IF ( HCO_IsVerb(3) .AND. PS==1 ) THEN
+       WRITE(MSG,*) '--> write level dimension: ', .NOT.NoLevDim
+       CALL HCO_MSG( MSG )
+    ENDIF
 
     ! Create output file
-    CALL NC_CREATE( ncFile, nLon,  nLat,  nLev,  nTime, &
-                    fId,    lonId, latId, levId, timeId, VarCt ) 
+    IF ( NoLevDim ) THEN
+       CALL NC_CREATE( ncFile, nLon,  nLat,    -1,  nTime, &
+                       fId,    lonId, latId, levId, timeId, VarCt ) 
+    ELSE
+       CALL NC_CREATE( ncFile, nLon,  nLat,  nLev,  nTime, &
+                       fId,    lonId, latId, levId, timeId, VarCt ) 
+    ENDIF
 
     !-----------------------------------------------------------------
     ! Write grid dimensions (incl. time) 
@@ -380,14 +425,24 @@ CONTAINS
     DEALLOCATE( Arr1D )
 
     ! Add level 
-    CALL NC_VAR_DEF ( fId, -1, levId, -1, -1, &
-                      'lev', 'GEOS-Chem level', 'unitless', 1, VarCt )
-    allocate(Int1D(nLev))
-    DO I = 1, nLev
-       Int1D(I) = I
-    ENDDO
-    CALL NC_VAR_WRITE ( fId, 'lev', Arr1D=Int1D )
-    deallocate(Int1D)
+    IF ( .NOT. NoLevDim ) THEN
+       CALL NC_VAR_DEF ( fId, -1, levId, -1, -1, &
+                         'lev', 'GEOS-Chem level', 'unitless', Prc, VarCt )
+       allocate(Arr1D(nLev))
+       DO I = 1, nLev
+          Arr1D(I) = REAL(I)
+       ENDDO
+       CALL NC_VAR_WRITE ( fId, 'lev', Arr1D=Arr1D )
+       deallocate(Arr1D)
+!    CALL NC_VAR_DEF ( fId, -1, levId, -1, -1, &
+!                      'lev', 'GEOS-Chem level', 'unitless', 1, VarCt )
+!    allocate(Int1D(nLev))
+!    DO I = 1, nLev
+!       Int1D(I) = I
+!    ENDDO
+!    CALL NC_VAR_WRITE ( fId, 'lev', Arr1D=Int1D )
+!    deallocate(Int1D)
+    ENDIF
 
     ! Add time 
     ! JD1 is the julian day of the data slice
@@ -481,6 +536,13 @@ CONTAINS
           levIdTmp = levId
        ELSE
           levIdTmp = -1
+       ENDIF
+
+       ! Error check: this should never happen!
+       IF ( levIdTmp > 0 .AND. NoLevDim ) THEN
+          MSG = 'Level dimension undefined but 3D container found: ' // TRIM(myName)
+          CALL HCO_ERROR(MSG,RC,THISLOC=LOC)
+          RETURN 
        ENDIF
 
        ! Write out in single precision
