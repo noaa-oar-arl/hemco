@@ -1225,13 +1225,13 @@ CONTAINS
        IF ( Lct%Dct%Dta%SpaceDim == 3 .AND. ASSOCIATED(Lct%Dct%Dta%V3) ) THEN
           IF ( ASSOCIATED(Lct%Dct%Dta%V3(1)%Val) ) THEN
              CALL Diagn_Update ( am_I_Root, HcoState, cName=TRIM(Lct%Dct%cName), &
-                                 Array3D=Lct%Dct%Dta%V3(1)%Val, COL=-1, RC=RC )
+                                 Array3D_SP=Lct%Dct%Dta%V3(1)%Val, COL=-1, RC=RC )
              IF ( RC /= HCO_SUCCESS ) RETURN
           ENDIF
        ELSEIF ( Lct%Dct%Dta%SpaceDim == 2 .AND. ASSOCIATED(Lct%Dct%Dta%V2) ) THEN
           IF ( ASSOCIATED(Lct%Dct%Dta%V2(1)%Val) ) THEN
              CALL Diagn_Update ( am_I_Root, HcoState, cName=TRIM(Lct%Dct%cName), &
-                                 Array2D=Lct%Dct%Dta%V2(1)%Val, COL=-1, RC=RC )
+                                 Array2D_SP=Lct%Dct%Dta%V2(1)%Val, COL=-1, RC=RC )
              IF ( RC /= HCO_SUCCESS ) RETURN
           ENDIF
        ENDIF
