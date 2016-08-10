@@ -135,6 +135,7 @@ CONTAINS
     ! HEMCO modules
     USE HCO_EmisList_Mod,  ONLY : HCO_GetPtr
     USE HCO_FluxArr_Mod,   ONLY : HCO_EmisAdd
+    USE HCO_Clock_Mod,     ONLY : HcoClock_First
 !
 ! !INPUT PARAMETERS:
 !
@@ -157,14 +158,15 @@ CONTAINS
 !  25 Mar 2013 - R. Yantosca - Now accept am_I_Root, Input_Opt, State_Chm, RC
 !  14 Apr 2014 - R. Yantosca - Prevent div-by-zero error w/ SUM_OF_ALL
 !  19 Aug 2014 - M. Sulprizio- Now a HEMCO extension
+!  07 Jan 2016 - E. Lundgren - Update molar gas constant to NIST 2014
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !DEFINED PARAMETERS:
 !
-    ! Universal gas constant for adjusting KOA for temp: 8.3145 [J/mol/K]
-    REAL(hp), PARAMETER :: R          = 8.31e+0_hp
+    ! Universal gas constant for adjusting KOA for temp: 8.3144598 [J/mol/K]
+    REAL(hp), PARAMETER :: R          = 8.3144598e+0_hp
 
     ! Density of octanol, needed for partitioning into OC: 820 [kg/m^3]
     REAL(hp), PARAMETER :: DENS_OCT   = 82e+1_hp
@@ -194,7 +196,7 @@ CONTAINS
     REAL(hp)            :: BC_AIR_RATIO,     BC_OC_RATIO
     REAL(hp)            :: FRAC_SNOW_OR_ICE, FRAC_SNOWFREE_LAND
     REAL(hp)            :: FRAC_LEAF, FRAC_LAKE, FRAC_SOIL
-    LOGICAL, SAVE       :: FIRST = .TRUE.
+!    LOGICAL, SAVE       :: FIRST = .TRUE.
     LOGICAL             :: aIR
     LOGICAL             :: IS_SNOW_OR_ICE,   IS_LAND_OR_ICE
 
@@ -248,7 +250,7 @@ CONTAINS
     IF ( .NOT. ExtState%GC_POPs ) RETURN
 
     ! Enter
-    CALL HCO_ENTER( 'HCOX_GC_POPs_Run (hcox_gc_POPs_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOX_GC_POPs_Run (hcox_gc_POPs_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! am I root? 
@@ -261,21 +263,21 @@ CONTAINS
     !=======================================================================
     ! Get pointers to gridded data imported through config. file
     !=======================================================================
-    IF ( FIRST ) THEN
+    IF ( HcoClock_First(HcoState%Clock,.TRUE.) ) THEN
 
-       CALL HCO_GetPtr( aIR, 'TOT_POP',     POP_TOT_EM, RC )
+       CALL HCO_GetPtr( aIR, HcoState, 'TOT_POP',     POP_TOT_EM, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
-       CALL HCO_GetPtr( aIR, 'GLOBAL_OC',   C_OC,       RC )
+       CALL HCO_GetPtr( aIR, HcoState, 'GLOBAL_OC',   C_OC,       RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
-       CALL HCO_GetPtr( aIR, 'GLOBAL_BC',   C_BC,       RC )
+       CALL HCO_GetPtr( aIR, HcoState, 'GLOBAL_BC',   C_BC,       RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
-       CALL HCO_GetPtr( aIR, 'SURF_POP',    POP_SURF,   RC )
+       CALL HCO_GetPtr( aIR, HcoState, 'SURF_POP',    POP_SURF,   RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
-       CALL HCO_GetPtr( aIR, 'SOIL_CARBON', F_OC_SOIL,  RC )
+       CALL HCO_GetPtr( aIR, HcoState, 'SOIL_CARBON', F_OC_SOIL,  RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
        ! Convert F_OC_SOIL from kg/m2 to fraction
@@ -291,13 +293,13 @@ CONTAINS
        ENDDO
        ENDDO
 
-       FIRST = .FALSE.
+!       FIRST = .FALSE.
 
     ENDIF
 
     ! Maximum extent of the PBL [model level]
     IF ( .NOT. ASSOCIATED(ExtState%PBL_MAX) ) THEN
-       CALL HCO_ERROR ( 'PBL_MAX not defined in ExtState!', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'PBL_MAX not defined in ExtState!', RC )
        RETURN
     ELSE
        PBL_MAX = DBLE( ExtState%PBL_MAX )
@@ -476,7 +478,7 @@ CONTAINS
                          RC, ExtNr=ExtNr )
        Arr3D => NULL()
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: EPOP_OC', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: EPOP_OC', RC )
           RETURN 
        ENDIF
     ENDIF
@@ -492,7 +494,7 @@ CONTAINS
                          RC, ExtNr=ExtNr )
        Arr3D => NULL()
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: EPOP_BC', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: EPOP_BC', RC )
           RETURN 
        ENDIF
     ENDIF
@@ -507,7 +509,7 @@ CONTAINS
        CALL HCO_EmisAdd( am_I_Root, HcoState, Arr3D, IDTPOPG, RC, ExtNr=ExtNr )
        Arr3D => NULL()
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: EPOP_G', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: EPOP_G', RC )
           RETURN 
        ENDIF
 
@@ -518,62 +520,74 @@ CONTAINS
     !----------------------
 
     DiagnName = 'AD53_POPG_SOIL'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=EMIS_SOIL, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_POPG_LAKE'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=EMIS_LAKE, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_POPG_LEAF'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=EMIS_LEAF, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_SOIL2AIR'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_SOIL2AIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_AIR2SOIL'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_AIR2SOIL, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_LAKE2AIR'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_LAKE2AIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_AIR2LAKE'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_AIR2LAKE, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_LEAF2AIR'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_LEAF2AIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_AIR2LEAF'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FLUX_AIR2LEAF, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_SOILAIR_FUG'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FUG_SOILAIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_LAKEAIR_FUG'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FUG_LAKEAIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     DiagnName = 'AD53_LEAFAIR_FUG'
-    CALL Diagn_Update( am_I_Root, ExtNr=ExtNr, cName=TRIM(DiagnName), &
+    CALL Diagn_Update( am_I_Root, HcoState, ExtNr=ExtNr, &
+                       cName=TRIM(DiagnName), &
                        Array2D=FUG_LEAFAIR, RC=RC)
     IF ( RC /= HCO_SUCCESS ) RETURN
 
@@ -582,7 +596,7 @@ CONTAINS
     !=======================================================================
 
     ! Return w/ success
-    CALL HCO_LEAVE ( RC )
+    CALL HCO_LEAVE( HcoState%Config%Err,RC )
 
   END SUBROUTINE HCOX_GC_POPs_Run
 !EOC
@@ -621,6 +635,8 @@ CONTAINS
 ! !REVISION HISTORY:
 !  21 Aug 2012 - C.L. Friedman - Initial version based on LAND_MERCURY_MOD
 !  25 Aug 2015 - M. Sulprizio  - Moved to hcox_gc_POPs_mod.F90
+!  02 Oct 2015 - E. Lundgren   - ExtState%POPG is now kg/kg dry air (prev kg)
+!  07 Jan 2016 - E. Lundgren   - Update molar gas constant to NIST 2014
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -662,15 +678,18 @@ CONTAINS
       REAL(hp)            :: DEL_H
 
       ! R = universal gas constant for adjusting KOA for temp:
-      ! 8.3145 [J/mol/K OR m3*Pa/K/mol]
-      REAL(hp), PARAMETER :: R = 8.31d0 
+      ! 8.3144598 [J/mol/K OR m3*Pa/K/mol]
+      REAL(hp), PARAMETER :: R = 8.3144598d0 
 
       ! Molecular weight
       ! For phe, 0.17823 kg/mol
       ! For pyr, 0.20225 kg/mol
       ! For BaP, 0,25231 kg/mol
       REAL(hp)            :: MW
-!
+
+      ! Molecular weight of air
+      REAL(hp), PARAMETER :: MWAIR  = 28.97d0 ! g/mol
+
       ! For PHENANTHRENE:
       ! log KOA_298 = 7.64, or 4.37*10^7 [unitless]
       ! For PYRENE:
@@ -751,11 +770,16 @@ CONTAINS
             TK = ExtState%TK%Arr%Val(I,J,1)
 
             ! Get gas phase air POP concentration at surface in mol/m3
-            POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM )![kg in gridbox]
+            ! ExtState%POPG is now in units of kg/kg dry air (ewl, 10/2/15) 
+            POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM )
 
-            ! kg / (0.178 kg/mol) /m3 in gridbox
-            POPG = POPG / MW / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
-            !WRITE(6,*) 'POPG (mol/m3) =', POPG
+! old
+!            ! kg / (0.178 kg/mol) /m3 in gridbox
+!            POPG = POPG / MW / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
+!            !WRITE(6,*) 'POPG (mol/m3) =', POPG
+! new
+!            ! (kg trc/kg dry air) / (0.178 kg trc/mol) * (kg dry air/m3)
+            POPG = POPG / MW * ExtState%AIRDEN%Arr%Val(I,J,1) ! mol/m3
 
             ! Grid box surface area [m2]
             AREA_M2   = HcoState%Grid%AREA_M2%Val(I,J)
@@ -959,6 +983,9 @@ CONTAINS
 ! !REVISION HISTORY:
 !  21 Aug 2012 - C.L. Friedman - Initial version based on LAND_MERCURY_MOD
 !  25 Aug 2015 - M. Sulprizio  - Moved to hcox_gc_POPs_mod.F90
+!  02 Oct 2015 - E. Lundgren   - ExtState%POPG is now kg/kg dry air (prev kg)
+!  07 Jan 2016 - E. Lundgren   - Update molar gas constant to NIST 2014
+
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -992,8 +1019,8 @@ CONTAINS
       REAL(hp)            :: DEL_HW
 
       ! R = universal gas constant for adjusting KOA for temp:
-      ! 8.3145d-3 [kJ/mol/K]
-      REAL(hp), PARAMETER :: R = 8.31d-3 
+      ! 8.3144598d-3 [kJ/mol/K]
+      REAL(hp), PARAMETER :: R = 8.3144598d-3 
 
       ! Molecular weight
       ! For phe, 0.17823 kg/mol
@@ -1107,10 +1134,16 @@ CONTAINS
                PRESS = PRESS / 1013.25e+0_hp
 
                ! Get gas phase air POP concentration at surface in mol/m3
-               POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM ) ![kg in gridbox]
+               ! ExtState%POPG is now in units of kg/kg dry air (ewl, 10/2/15) 
+               POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM )
 
-               ! kg / (kg/mol) /m3 in gridbox
-               POPG = POPG / MWPOP / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
+! old
+!               ! kg / (kg/mol) /m3 in gridbox
+!               POPG = POPG / MWPOP / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
+! new
+               ! (kg trc/kg dry air) / (kg trc/mol) * (kg dry air/m3)
+               POPG = POPG / MWPOP * ExtState%AIRDEN%Arr%Val(I,J,1) ! mol/m3
+
 
                ! Grid box surface area [m2]
                AREA_M2   = HcoState%Grid%AREA_M2%Val(I,J)
@@ -1321,6 +1354,8 @@ CONTAINS
 ! !REVISION HISTORY:
 !  21 Aug 2012 - C.L. Friedman - Initial version based on LAND_MERCURY_MOD
 !  25 Aug 2015 - M. Sulprizio  - Moved to hcox_gc_POPs_mod.F90
+!  02 Oct 2015 - E. Lundgren   - ExtState%POPG is now kg/kg dry air (prev kg)
+!  07 Jan 2016 - E. Lundgren   - Update molar gas constant to NIST 2014
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1372,12 +1407,15 @@ CONTAINS
       REAL(hp)            :: DEL_HW     
 
       ! R = universal gas constant for adjusting KOA for temp:
-      ! 8.3145 [J/mol/K OR m3*Pa/K/mol]
-      REAL(hp), PARAMETER :: R = 8.31e+0_hp 
+      ! 8.314 [J/mol/K OR m3*Pa/K/mol]
+      REAL(hp), PARAMETER :: R = 8.3144598e+0_hp 
 
       ! Molecular weight
       ! For phe, 0.17823 kg/mol
       REAL(hp)            :: MW   
+
+      ! Molecular weight of air
+      REAL(hp), PARAMETER :: MWAIR  = 28.97d0 ! g/mol
 
       ! For PHENANTHRENE:
       ! log KOA_298 = 7.64, or 4.37*10^7 [unitless]
@@ -1458,10 +1496,16 @@ CONTAINS
                TK = ExtState%TK%Arr%Val(I,J,1)
 
                ! Get gas phase air POP concentration at surface in mol/m3
-               POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM ) ![kg in gridbox]
+               ! ExtState%POPG is now in units of kg/kg dry air (ewl, 10/2/15) 
+               POPG = MAX( ExtState%POPG%Arr%Val(I,J,1), SMALLNUM )
 
-               ! kg / (0.178 kg/mol) /m3 in gridbox
-               POPG = POPG / MW / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
+! old
+!               ! kg / (0.178 kg/mol) /m3 in gridbox
+!               POPG = POPG / MW / ExtState%AIRVOL%Arr%Val(I,J,1) ! mol/m3
+! new
+               ! (kg trc/kg dry air) / (kg trc/mol) * (kg dry air/m3)
+               POPG = POPG / MW * ExtState%AIRDEN%Arr%Val(I,J,1) ! mol/m3
+
 
                ! Grid box surface area [m2]
                AREA_M2   = HcoState%Grid%AREA_M2%Val(I,J)
@@ -1844,11 +1888,11 @@ CONTAINS
     !=======================================================================
 
     ! Get the extension number
-    ExtNr = GetExtNr( TRIM( ExtName ) )
+    ExtNr = GetExtNr( HcoState%Config%ExtList, TRIM(ExtName) )
     IF ( ExtNr <= 0 ) RETURN
 
     ! Enter HEMCO
-    CALL HCO_ENTER( 'HcoX_GC_POPs_Init (hcox_gc_POPs_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HcoX_GC_POPs_Init (hcox_gc_POPs_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Set species IDs      
@@ -1858,13 +1902,13 @@ CONTAINS
     ! Verbose mode
     IF ( am_I_Root ) THEN
        MSG = 'Use gc_POPs emissions module (extension module)'
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
 
        MSG = 'Use the following species (Name: HcoID):'
-       CALL HCO_MSG(MSG)
+       CALL HCO_MSG(HcoState%Config%Err,MSG)
        DO N = 1, nSpc
           WRITE(MSG,*) TRIM(SpcNames(N)), ':', HcoIDs(N)
-          CALL HCO_MSG(MSG)
+          CALL HCO_MSG(HcoState%Config%Err,MSG)
        ENDDO
     ENDIF
 
@@ -1885,21 +1929,21 @@ CONTAINS
     ! ERROR: POPG tracer is not found!
     IF ( IDTPOPG <= 0 ) THEN
        RC = HCO_FAIL
-       CALL HCO_ERROR( 'Cannot find POPG tracer in list of species!', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot find POPG tracer in list of species!', RC )
        RETURN
     ENDIF
     
     ! ERROR! POPPOCPO tracer is not found
     IF ( IDTPOPPOCPO <= 0 ) THEN
        RC = HCO_FAIL
-       CALL HCO_ERROR( 'Cannot find POPPOCPO tracer in list of species!', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot find POPPOCPO tracer in list of species!', RC )
        RETURN
     ENDIF
 
     ! ERROR! POPPBCPO tracer is not found
     IF ( IDTPOPPBCPO <= 0 ) THEN
        RC = HCO_FAIL
-       CALL HCO_ERROR( 'Cannot find POPPBCPO tracer in list of species!', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot find POPPBCPO tracer in list of species!', RC )
        RETURN
     ENDIF
 
@@ -1910,7 +1954,8 @@ CONTAINS
     ! Activate met fields required by this extension
     ExtState%POPG%DoUse        = .TRUE.
     ExtState%ALBD%DoUse        = .TRUE. 
-    ExtState%AIRVOL%DoUse      = .TRUE. 
+    ExtState%AIRVOL%DoUse      = .TRUE.
+    ExtState%AIRDEN%DoUse      = .TRUE. 
     ExtState%FRAC_OF_PBL%DoUse = .TRUE. 
     ExtState%FRLAKE%DoUse      = .TRUE.
     ExtState%LAI%DoUse         = .TRUE.
@@ -1935,56 +1980,56 @@ CONTAINS
 
     ALLOCATE( EPOP_G ( HcoState%NX, HcoState%NY, HcoState%NZ ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_G', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_G', RC )
        RETURN
     ENDIF 
     EPOP_G = 0.0e0_hp
 
     ALLOCATE( EPOP_OC( HcoState%NX, HcoState%NY, HcoState%NZ ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_OC', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_OC', RC )
        RETURN
     ENDIF 
     EPOP_OC = 0.0e0_hp
 
     ALLOCATE( EPOP_BC( HcoState%NX, HcoState%NY, HcoState%NZ ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_BC', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_BC', RC )
        RETURN
     ENDIF 
     EPOP_BC = 0.0e0_hp
 
     ALLOCATE( EPOP_VEG( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_VEG', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_VEG', RC )
        RETURN
     ENDIF 
     EPOP_VEG = 0.0e0_hp
 
     ALLOCATE( EPOP_LAKE( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_LAKE', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_LAKE', RC )
        RETURN
     ENDIF 
     EPOP_LAKE = 0.0e0_hp
 
     ALLOCATE( EPOP_SOIL( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_SOIL', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_SOIL', RC )
        RETURN
     ENDIF 
     EPOP_SOIL = 0.0e0_hp
 
     ALLOCATE( EPOP_OCEAN( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_OCEAN', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_OCEAN', RC )
        RETURN
     ENDIF 
     EPOP_OCEAN = 0.0e0_hp
 
     ALLOCATE( EPOP_SNOW( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EPOP_SNOW', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EPOP_SNOW', RC )
        RETURN
     ENDIF 
     EPOP_SNOW = 0.0e0_hp
@@ -1992,112 +2037,112 @@ CONTAINS
 
     ALLOCATE( SUM_OC_EM( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate SUM_OC_EM', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate SUM_OC_EM', RC )
        RETURN
     ENDIF 
     SUM_OC_EM = 0.0e0_hp
 
     ALLOCATE( SUM_BC_EM( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate SUM_BC_EM', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate SUM_BC_EM', RC )
        RETURN
     ENDIF 
     SUM_BC_EM = 0.0e0_hp
 
     ALLOCATE( SUM_G_EM( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate SUM_G_EM', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate SUM_G_EM', RC )
        RETURN
     ENDIF     
     SUM_G_EM = 0.0e0_hp
 
     ALLOCATE( SUM_OF_ALL( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate SUM_OF_ALL', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate SUM_OF_ALL', RC )
        RETURN
     ENDIF 
     SUM_OF_ALL = 0.0e0_hp
 
     ALLOCATE( EMIS_SOIL( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EMIS_SOIL', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EMIS_SOIL', RC )
        RETURN
     ENDIF 
     EMIS_SOIL = 0.0e0_hp
 
     ALLOCATE( FLUX_SOIL2AIR( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_SOIL2AIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_SOIL2AIR', RC )
        RETURN
     ENDIF 
     FLUX_SOIL2AIR = 0.0e0_hp
 
     ALLOCATE( FLUX_AIR2SOIL( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_AIR2SOIL', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_AIR2SOIL', RC )
        RETURN
     ENDIF 
     FLUX_AIR2SOIL = 0.0e0_hp
 
     ALLOCATE( FUG_SOILAIR( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FUG_SOILAIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FUG_SOILAIR', RC )
        RETURN
     ENDIF 
     FUG_SOILAIR = 0.0e0_hp 
 
     ALLOCATE( EMIS_LAKE( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EMIS_LAKE', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EMIS_LAKE', RC )
        RETURN
     ENDIF 
     EMIS_LAKE = 0.0e0_hp 
   
     ALLOCATE( FLUX_LAKE2AIR( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_LAKE2AIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_LAKE2AIR', RC )
        RETURN
     ENDIF 
     FLUX_LAKE2AIR = 0.0e0_hp
 
     ALLOCATE( FLUX_AIR2LAKE( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_AIR2LAKE', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_AIR2LAKE', RC )
        RETURN
     ENDIF 
     FLUX_AIR2LAKE = 0.0e0_hp
 
     ALLOCATE( FUG_LAKEAIR( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FUG_LAKEAIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FUG_LAKEAIR', RC )
        RETURN
     ENDIF 
     FUG_LAKEAIR = 0.0e0_hp
 
     ALLOCATE( EMIS_LEAF( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate EMIS_LEAF', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EMIS_LEAF', RC )
        RETURN
     ENDIF 
     EMIS_LEAF = 0.0e0_hp
 
     ALLOCATE( FLUX_LEAF2AIR( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_LEAF2AIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_LEAF2AIR', RC )
        RETURN
     ENDIF 
     FLUX_LEAF2AIR = 0.0e0_hp
 
     ALLOCATE( FLUX_AIR2LEAF( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FLUX_AIR2LEAF', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FLUX_AIR2LEAF', RC )
        RETURN
     ENDIF 
     FLUX_AIR2LEAF = 0.0e0_hp
 
     ALLOCATE( FUG_LEAFAIR  ( HcoState%NX, HcoState%NY ), STAT=RC )
     IF ( RC /= 0 ) THEN
-       CALL HCO_ERROR ( 'Cannot allocate FUG_LEAFAIR', RC )
+       CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate FUG_LEAFAIR', RC )
        RETURN
     ENDIF 
     FUG_LEAFAIR = 0.0e0_hp
@@ -2108,7 +2153,7 @@ CONTAINS
     IF ( ALLOCATED( HcoIDs   ) ) DEALLOCATE( HcoIDs   )
     IF ( ALLOCATED( SpcNames ) ) DEALLOCATE( SpcNames )
 
-    CALL HCO_LEAVE ( RC ) 
+    CALL HCO_LEAVE( HcoState%Config%Err,RC ) 
 
   END SUBROUTINE HCOX_GC_POPs_Init
 !EOC

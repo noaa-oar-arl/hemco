@@ -59,6 +59,14 @@ MODULE HCOX_GFED_MOD
 !
 ! Field NAMASK must be defined in section mask of the HEMCO configuration file.
 !                                                                             
+! For SOA_SVPOA mechanism:
+! * If tracers POG1 and POG2 are specified, emissions are calculated from OC,
+!   multiplied by a POG scale factor (Scaling_POG1, Scaling_POG2) that must be
+!   specified in the HEMCO configuration file.
+! * If tracer NAP is specified, emissions are calculated from CO, multiplied
+!   by a NAP scale factor (Scaling_NAP) that must be specified in the HEMCO
+!   configuration file.
+!
 !  References:
 !  ============================================================================
 !  (1 ) Original GFED3 database from Guido van der Werf 
@@ -147,26 +155,19 @@ MODULE HCOX_GFED_MOD
   !              emission factor type. The filename of the emissions
   !              emissions factor table is specified in the HEMCO
   !              configuration file. All scale factors in kg/kgDM.
-  ! COScale    : CO scale factor to account for production from 
-  !              VOCs. Read from HEMCO configuration file.
   ! OCPIfrac   : Fraction of OC that converts into hydrophilic OC.
   !              Can be set in HEMCO configuration file (default=0.5)
   ! BCPIfrac   : Fraction of BC that converts into hydrophilic BC.
   !              Can be set in HEMCO configuration file (default=0.2)
-  ! POASCALE  : Scale factor for POA. If tracer POA1 is specified, 
-  !             emissions are calculated from OC, multiplied by a
-  !             POA scale factor that must be specified in the HEMCO
-  !             configuration file (POA scale).
-  ! NAPSCALE  : Scale factor for NAP. If tracer NAP is specified, 
-  !             emissions are calculated from CO, multiplied by a
-  !             NAP scale factor that must be specified in the HEMCO
-  !             configuration file (NAP scale).
+  ! POG1frac   : Fraction of SVOC that is assigned to POG1.
+  !              Can be set in HEMCO configuration file (default=0.49)
   !=================================================================
   REAL(hp), ALLOCATABLE, TARGET  :: GFED3_EMFAC(:,:)
   REAL(hp), ALLOCATABLE, TARGET  :: GFED4_EMFAC(:,:)
   REAL(hp),              POINTER :: GFED_EMFAC (:,:) => NULL()
   REAL(sp)                       :: OCPIfrac 
   REAL(sp)                       :: BCPIfrac
+  REAL(sp)                       :: POG1frac
 
   !=================================================================
   ! DATA ARRAY POINTERS 
@@ -243,7 +244,7 @@ CONTAINS
     IF ( .NOT. ExtState%GFED ) RETURN
 
     ! Enter 
-    CALL HCO_ENTER ( 'HCOX_GFED_Run (hcox_gfed_mod.F90)', RC ) 
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOX_GFED_Run (hcox_gfed_mod.F90)', RC ) 
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------
@@ -253,34 +254,34 @@ CONTAINS
 
        ! Get pointers to GFED3 data 
        IF ( IsGFED3 ) THEN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_WDL', GFED_WDL, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_WDL', GFED_WDL, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_SAV', GFED_SAV, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_SAV', GFED_SAV, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_PET', GFED_PET, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_PET', GFED_PET, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_FOR', GFED_FOR, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_FOR', GFED_FOR, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_AGW', GFED_AGW, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_AGW', GFED_AGW, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_DEF', GFED_DEF, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_DEF', GFED_DEF, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_HUMTROP', HUMTROP, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_HUMTROP', HUMTROP, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
 
        ! Get pointers to GFED4 data
        ELSEIF ( IsGFED4 ) THEN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_TEMP', GFED_WDL, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_TEMP', GFED_WDL, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_SAVA', GFED_SAV, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_SAVA', GFED_SAV, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_PEAT', GFED_PET, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_PEAT', GFED_PET, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_BORF', GFED_FOR, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_BORF', GFED_FOR, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_AGRI', GFED_AGW, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_AGRI', GFED_AGW, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_DEFO', GFED_DEF, RC )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_DEFO', GFED_DEF, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
        ENDIF
 
@@ -291,13 +292,13 @@ CONTAINS
 
        ! Also point to scale factors if needed
        IF ( DoDay ) THEN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_FRAC_DAY', &
-                                     DAYSCAL,   RC               )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_FRAC_DAY', &
+                            DAYSCAL,   RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
        ENDIF
        IF ( Do3Hr ) THEN
-          CALL HCO_GetPtr ( am_I_Root, 'GFED_FRAC_3HOUR', &
-                                     HRSCAL,    RC                 )
+          CALL HCO_GetPtr ( am_I_Root, HcoState, 'GFED_FRAC_3HOUR', &
+                            HRSCAL,    RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
        ENDIF
 
@@ -336,7 +337,7 @@ CONTAINS
              CASE( 6 )
                 TMPPTR => GFED_WDL
              CASE DEFAULT
-                CALL HCO_ERROR ( 'Undefined emission factor', RC )
+                CALL HCO_ERROR ( HcoState%Config%Err, 'Undefined emission factor', RC )
                 RETURN
           END SELECT
 
@@ -390,6 +391,10 @@ CONTAINS
              SpcArr = SpcArr * BCPIfrac
           CASE ( 'BCPO' )
              SpcArr = SpcArr * (1.0_sp - BCPIfrac)
+          CASE ( 'POG1' )
+             SpcArr = SpcArr * POG1frac
+          CASE ( 'POG2' )
+             SpcArr = SpcArr * (1.0_sp - POG1frac)
        END SELECT
 
        ! Check for masking
@@ -400,7 +405,7 @@ CONTAINS
        CALL HCO_EmisAdd( am_I_Root, HcoState, SpcArr, HcoIDs(N), RC, ExtNr=ExtNr ) 
        IF ( RC /= HCO_SUCCESS ) THEN
           MSG = 'HCO_EmisAdd error: ' // TRIM(HcoState%Spc(HcoIDs(N))%SpcName)
-          CALL HCO_ERROR( MSG, RC )
+          CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
           RETURN 
        ENDIF
 
@@ -410,7 +415,7 @@ CONTAINS
     TmpPtr  => NULL()
 
     ! Leave w/ success
-    CALL HCO_LEAVE ( RC )
+    CALL HCO_LEAVE( HcoState%Config%Err,RC )
 
   END SUBROUTINE HCOX_GFED_Run
 !EOC
@@ -456,6 +461,9 @@ CONTAINS
 !  11 Nov 2014 - C. Keller     - Now get hydrophilic fractions via config file
 !  22 Apr 2015 - R. Yantosca   - Now explicitly test for "POA scale factor"
 !                                and "NAP scale factor" to avoid search errors
+!  07 Jan 2016 - M. Sulprizio  - Change 'POA1' to 'POG1' to better reflect that
+!                                SVOC emissions are added to the gas-phase
+!                                species in carbon_mod.F
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -479,19 +487,21 @@ CONTAINS
     !=================================================================
 
     ! Extension Nr.
-    ExtNr = GetExtNr( TRIM(ExtName) )
+    ExtNr = GetExtNr( HcoState%Config%ExtList, TRIM(ExtName) )
     IF ( ExtNr <= 0 ) RETURN
 
     ! Enter 
-    CALL HCO_ENTER ( 'HCOX_GFED_Init (hcox_gfed_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOX_GFED_Init (hcox_gfed_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Check if this is GFED3 or GFED4
-    CALL GetExtOpt ( ExtNr, 'GFED3', OptValBool=IsGFED3, FOUND=FOUND, RC=RC )
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'GFED3', &
+                     OptValBool=IsGFED3, FOUND=FOUND, RC=RC )
     IF ( .NOT. FOUND ) THEN
        IsGFED3 = .FALSE.
     ENDIF
-    CALL GetExtOpt ( ExtNr, 'GFED4', OptValBool=IsGFED4, FOUND=FOUND, RC=RC )
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'GFED4', &
+                     OptValBool=IsGFED4, FOUND=FOUND, RC=RC )
     IF ( .NOT. FOUND ) THEN
        IsGFED4 = .FALSE.
     ENDIF
@@ -500,13 +510,13 @@ CONTAINS
     IF ( .NOT. IsGFED4 .AND. .NOT. IsGFED3 ) THEN
        MSG = 'GFED is enabled but no GFED version is selected. ' // &
              'Please set GFED3 or GFED4 in HEMCO configuration file.'
-       CALL HCO_ERROR( MSG, RC )
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ENDIF
     IF ( IsGFED4 .AND. IsGFED3 ) THEN
        MSG = 'Cannot use GFED3 and GFED4 together! Please select ' // &
              'only one model version in the HEMCO configuration file.'
-       CALL HCO_ERROR( MSG, RC )
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ENDIF
 
@@ -525,7 +535,7 @@ CONTAINS
     ! ---------------------------------------------------------------------- 
 
     ! Try to read hydrophilic fractions of BC. Defaults to 0.2.
-    CALL GetExtOpt ( ExtNr, 'hydrophilic BC', &
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'hydrophilic BC', &
                      OptValSp=ValSp, FOUND=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( .NOT. FOUND ) THEN
@@ -535,7 +545,7 @@ CONTAINS
     ENDIF
 
     ! Try to read hydrophilic fractions of OC. Defaults to 0.5.
-    CALL GetExtOpt ( ExtNr, 'hydrophilic OC', &
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'hydrophilic OC', &
                      OptValSp=ValSp, FOUND=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( .NOT. FOUND ) THEN
@@ -544,24 +554,37 @@ CONTAINS
        OCPIfrac = ValSp
     ENDIF
 
-    ! Error check: OCPIfrac and BCPI frac must be between 0 and 1
+    ! Try to read POG1 fraction of SVOC. Defaults to 0.49.
+    CALL GetExtOpt ( HcoState%Config, ExtNr, 'fraction POG1', &
+                     OptValSp=ValSp, FOUND=FOUND, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    IF ( .NOT. FOUND ) THEN
+       POG1frac = 0.49
+    ELSE
+       POG1frac = ValSp
+    ENDIF
+
+    ! Error check: OCPIfrac, BCPIfrac, and POG1frac must be between 0 and 1
     IF ( OCPIfrac < 0.0_sp .OR. OCPIfrac > 1.0_sp .OR. &
-         BCPIfrac < 0.0_sp .OR. BCPIfrac > 1.0_sp     ) THEN
-       WRITE(MSG,*) 'hydrophilic fractions must be between 0-1: ', &
-          OCPIfrac, BCPIfrac
-       CALL HCO_ERROR( MSG, RC )
+         BCPIfrac < 0.0_sp .OR. BCPIfrac > 1.0_sp .OR. &
+         POG1frac < 0.0_sp .OR. POG1frac > 1.0_sp     ) THEN
+       WRITE(MSG,*) 'fractions must be between 0-1: ', &
+          OCPIfrac, BCPIfrac, POG1frac
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ENDIF
 
     ! Use daily scale factors?
-    CALL GetExtOpt ( ExtNr, 'GFED_daily', OptValBool=DoDay, FOUND=FOUND, RC=RC )
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'GFED_daily', &
+                     OptValBool=DoDay, FOUND=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( .NOT. FOUND ) THEN
        DoDay = .FALSE.
     ENDIF 
 
     ! Use 3-hourly scale factors?
-    CALL GetExtOpt ( ExtNr, 'GFED_3hourly', OptValBool=Do3Hr, FOUND=FOUND, RC=RC )
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'GFED_3hourly', &
+                     OptValBool=Do3Hr, FOUND=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( .NOT. FOUND ) THEN
        Do3Hr = .FALSE.
@@ -575,7 +598,7 @@ CONTAINS
     ALLOCATE ( GFED3_EMFAC ( N_SPEC, N_EMFAC ),        &
                GFED4_EMFAC ( N_SPEC, N_EMFAC ), STAT=AS )
     IF ( AS/=0 ) THEN
-       CALL HCO_ERROR( 'Cannot allocate GFED_EMFAC', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot allocate GFED_EMFAC', RC )
        RETURN
     ENDIF
     GFED4_EMFAC = 0.0_hp
@@ -607,19 +630,21 @@ CONTAINS
     ! Prompt to log file
     IF ( am_I_Root ) THEN
        MSG = 'Use GFED extension'
-       CALL HCO_MSG( MSG, SEP1='-' )
+       CALL HCO_MSG(HcoState%Config%Err,MSG, SEP1='-' )
        WRITE(MSG,*) '   - Use GFED-3              : ', IsGFED3 
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
        WRITE(MSG,*) '   - Use GFED-4              : ', IsGFED4 
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
        WRITE(MSG,*) '   - Use daily scale factors : ', DoDay 
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
        WRITE(MSG,*) '   - Use hourly scale factors: ', Do3Hr
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
        WRITE(MSG,*) '   - Hydrophilic OC fraction : ', OCPIfrac
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
        WRITE(MSG,*) '   - Hydrophilic BC fraction : ', BCPIfrac
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
+       WRITE(MSG,*) '   - POG1 fraction           : ', POG1frac
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
     ENDIF
 
     ! Get HEMCO species IDs of all species specified in configuration file
@@ -627,40 +652,45 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( nSpc == 0 ) THEN
        MSG = 'No GFED species specified'
-       CALL HCO_ERROR ( MSG, RC ) 
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC ) 
        RETURN
     ENDIF
 
     ! Get species scale factors
-    CALL GetExtSpcVal( ExtNr, nSpc, SpcNames, 'Scaling', 1.0_sp, SpcScal, RC )
+    CALL GetExtSpcVal( HcoState%Config, ExtNr, nSpc, &
+                       SpcNames, 'Scaling', 1.0_sp, SpcScal, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Get species mask fields
-    CALL GetExtSpcVal( ExtNr, nSpc, SpcNames, 'ScaleField', HCOX_NOSCALE, SpcScalFldNme, RC )
+    CALL GetExtSpcVal( HcoState%Config, ExtNr, nSpc, &
+                       SpcNames, 'ScaleField', HCOX_NOSCALE, SpcScalFldNme, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Error trap: in previous versions, CO, POA and NAP scale factor were given as
     ! 'CO scale factor', etc. Make sure those attributes do not exist any more!
-    CALL GetExtOpt ( ExtNr, 'CO scale factor', OptValSp=ValSp, FOUND=FOUND, RC=RC )
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'CO scale factor', &
+                     OptValSp=ValSp, FOUND=FOUND, RC=RC )
     IF ( .NOT. FOUND ) THEN
-       CALL GetExtOpt ( ExtNr, 'POA scale factor', OptValSp=ValSp, FOUND=FOUND, RC=RC )
+       CALL GetExtOpt( HcoState%Config, ExtNr, 'POA scale factor', &
+                        OptValSp=ValSp, FOUND=FOUND, RC=RC )
     ENDIF
     IF ( .NOT. FOUND ) THEN
-       CALL GetExtOpt ( ExtNr, 'NAP scale factor', OptValSp=ValSp, FOUND=FOUND, RC=RC )
+       CALL GetExtOpt( HcoState%Config, ExtNr, 'NAP scale factor', &
+                        OptValSp=ValSp, FOUND=FOUND, RC=RC )
     ENDIF
     IF ( FOUND ) THEN
        MSG = 'Found old definition of CO, POA and/or NAP scale factor! '  // & 
              'This version of HEMCO expects species scale factors to be ' // &
              'set as `Scaling_XX` instead of `XX scale factor`. '         // &
              'Please update the GFED settings section accordingly.'
-       CALL HCO_ERROR ( MSG, RC )
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ENDIF
 
     ! GFEDIDS are the matching indeces of the HEMCO species in GFED_EMFAC.
     ALLOCATE ( GfedIDs(nSpc), STAT=AS )
     IF ( AS/=0 ) THEN
-       CALL HCO_ERROR( 'Cannot allocate GfedIDs', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot allocate GfedIDs', RC )
        RETURN
     ENDIF
     GfedIDs = -1
@@ -686,7 +716,8 @@ CONTAINS
              SpcName = 'OC'
           ENDIF
        ENDIF
-       IF ( TRIM(SpcName) == 'POA1' ) SpcName = 'OC'
+       IF ( TRIM(SpcName) == 'POG1' ) SpcName = 'OC'
+       IF ( TRIM(SpcName) == 'POG2' ) SpcName = 'OC'
        IF ( TRIM(SpcName) == 'NAP'  ) SpcName = 'CO'
 
        ! Search for matching GFED species by name
@@ -701,18 +732,18 @@ CONTAINS
              IF ( am_I_Root ) THEN
                 MSG = '   - Emit GFED species ' // TRIM(GFED_SPEC_NAME(M)) // &
                       '     as model species ' // TRIM(SpcNames(N))
-                CALL HCO_MSG( MSG )
+                CALL HCO_MSG(HcoState%Config%Err,MSG )
                 WRITE(MSG,*) '     --> Will use scale factor: ', SpcScal(N)
-                CALL HCO_MSG( MSG )
+                CALL HCO_MSG(HcoState%Config%Err,MSG )
                 WRITE(MSG,*) '     --> Will use scale field : ', TRIM(SpcScalFldNme(N))
-                CALL HCO_MSG( MSG )
+                CALL HCO_MSG(HcoState%Config%Err,MSG )
              ENDIF
              EXIT ! go to next species
           ENDIF
        ENDDO
        IF ( .NOT. Matched ) THEN
           MSG = 'Species '// TRIM(SpcName) //' not found in GFED'
-          CALL HCO_ERROR( MSG, RC )
+          CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
           RETURN
        ENDIF
     ENDDO !N
@@ -724,7 +755,7 @@ CONTAINS
     GFED_SPEC_NAME => NULL()
 
     ! Return w/ success
-    CALL HCO_LEAVE ( RC ) 
+    CALL HCO_LEAVE( HcoState%Config%Err,RC ) 
  
   END SUBROUTINE HCOX_GFED_Init
 !EOC

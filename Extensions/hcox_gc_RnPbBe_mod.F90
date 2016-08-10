@@ -64,6 +64,7 @@ MODULE HCOX_GC_RnPbBe_Mod
 !  04 Sep 2014 - R. Yantosca - Remove IDTPb; Pb210 only has a chemical source
 !  04 Sep 2014 - R. Yantosca - Modified for GCAP simulation
 !  05 Nov 2014 - C. Keller   - Now allow Rn or Pb to be not specified.
+!  07 Jan 2016 - E. Lundgren - Update Avogadro's # to NIST 2014 value
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -87,8 +88,8 @@ MODULE HCOX_GC_RnPbBe_Mod
 ! !DEFINED PARAMETERS:
 !
   ! To convert kg to atoms
-  REAL*8,  PARAMETER            :: XNUMOL_Rn = ( 6.0225d23 / 222.0d-3 )    
-  REAL*8,  PARAMETER            :: XNUMOL_Be = ( 6.0225d23 /   7.0d-3 )
+  REAL*8,  PARAMETER            :: XNUMOL_Rn = ( 6.022140857d23 / 222.0d-3 )    
+  REAL*8,  PARAMETER            :: XNUMOL_Be = ( 6.022140857d23 /   7.0d-3 )
 
 CONTAINS
 !EOC
@@ -156,7 +157,7 @@ CONTAINS
     !=======================================================================
 
     ! Enter
-    CALL HCO_ENTER( 'HCOX_GC_RnPbBe_Run (hcox_gc_RnPbBe_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOX_GC_RnPbBe_Run (hcox_gc_RnPbBe_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Set error flag
@@ -317,7 +318,7 @@ CONTAINS
        CALL HCO_EmisAdd( am_I_Root, HcoState, Arr2D, IDTRn, RC, ExtNr=ExtNr )
        Arr2D => NULL()
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: EmisRn', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: EmisRn', RC )
           RETURN 
        ENDIF
    
@@ -386,7 +387,7 @@ CONTAINS
        CALL HCO_EmisAdd( am_I_Root, HcoState, Arr3D, IDTBe7, RC, ExtNr=ExtNr )
        Arr3D => NULL()
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: EmisBe7', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: EmisBe7', RC )
           RETURN 
        ENDIF
    
@@ -397,7 +398,7 @@ CONTAINS
     !=======================================================================
 
     ! Return w/ success
-    CALL HCO_LEAVE ( RC )
+    CALL HCO_LEAVE( HcoState%Config%Err,RC )
 
   END SUBROUTINE HCOX_Gc_RnPbBe_Run
 !EOC
@@ -455,11 +456,11 @@ CONTAINS
     !=======================================================================
 
     ! Get the extension number
-    ExtNr = GetExtNr( TRIM( ExtName ) )
+    ExtNr = GetExtNr( HcoState%Config%ExtList, TRIM(ExtName) )
     IF ( ExtNr <= 0 ) RETURN
 
     ! Enter HEMCO
-    CALL HCO_ENTER( 'HcoX_GC_RnPbBe_Init (hcox_gc_RnPbBe_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HcoX_GC_RnPbBe_Init (hcox_gc_RnPbBe_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Set species IDs      
@@ -469,13 +470,13 @@ CONTAINS
     ! Verbose mode
     IF ( am_I_Root ) THEN
        MSG = 'Use gc_RnPbBe emissions module (extension module)'
-       CALL HCO_MSG( MSG )
+       CALL HCO_MSG(HcoState%Config%Err,MSG )
 
        MSG = 'Use the following species (Name: HcoID):'
-       CALL HCO_MSG(MSG)
+       CALL HCO_MSG(HcoState%Config%Err,MSG)
        DO N = 1, nSpc
           WRITE(MSG,*) TRIM(SpcNames(N)), ':', HcoIDs(N)
-          CALL HCO_MSG(MSG)
+          CALL HCO_MSG(HcoState%Config%Err,MSG)
        ENDDO
     ENDIF
 
@@ -493,17 +494,17 @@ CONTAINS
 
     ! WARNING: Rn tracer is not found!
     IF ( IDTRn <= 0 .AND. am_I_Root ) THEN
-       CALL HCO_WARNING( 'Cannot find 222Rn tracer in list of species!', RC )
+       CALL HCO_WARNING(HcoState%Config%Err, 'Cannot find 222Rn tracer in list of species!', RC )
     ENDIF
     
     ! WARNING: Be7 tracer is not found
     IF ( IDTBe7 <= 0 .AND. am_I_Root ) THEN
-       CALL HCO_WARNING( 'Cannot find 7Be tracer in list of species!', RC )
+       CALL HCO_WARNING(HcoState%Config%Err, 'Cannot find 7Be tracer in list of species!', RC )
     ENDIF
 
     ! ERROR: No tracer defined
     IF ( IDTRn <= 0 .AND. IDTBe7 <= 0 ) THEN
-       CALL HCO_ERROR( 'Cannot use RnPbBe extension: no valid species!', RC )
+       CALL HCO_ERROR( HcoState%Config%Err, 'Cannot use RnPbBe extension: no valid species!', RC )
     ENDIF
 
     ! Activate met fields required by this extension
@@ -524,7 +525,7 @@ CONTAINS
     IF ( IDTRn > 0 ) THEN
        ALLOCATE( EmissRn( HcoState%Nx, HcoState%NY ), STAT=RC )
        IF ( RC /= 0 ) THEN
-          CALL HCO_ERROR ( 'Cannot allocate EmissRn', RC )
+          CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EmissRn', RC )
           RETURN
        ENDIF 
     ENDIF
@@ -532,7 +533,7 @@ CONTAINS
     IF ( IDTBe7 > 0 ) THEN
        ALLOCATE( EmissBe7( HcoState%Nx, HcoState%NY, HcoState%NZ ), STAT=RC )
        IF ( RC /= 0 ) THEN
-          CALL HCO_ERROR ( 'Cannot allocate EmissBe7', RC )
+          CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate EmissBe7', RC )
           RETURN
        ENDIF 
        IF ( RC /= 0 ) RETURN
@@ -540,21 +541,21 @@ CONTAINS
        ! Array for latitudes (Lal & Peters data)
        ALLOCATE( LATSOU( 10 ), STAT=RC )
        IF ( RC /= 0 ) THEN
-          CALL HCO_ERROR ( 'Cannot allocate LATSOU', RC )
+          CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate LATSOU', RC )
           RETURN
        ENDIF 
    
        ! Array for pressures (Lal & Peters data)
        ALLOCATE( PRESOU( 33 ), STAT=RC )
        IF ( RC /= 0 ) THEN
-          CALL HCO_ERROR ( 'Cannot allocate PRESOU', RC )
+          CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate PRESOU', RC )
           RETURN
        ENDIF 
    
        ! Array for 7Be emissions ( Lal & Peters data)
        ALLOCATE( BESOU( 10, 33 ), STAT=RC )
        IF ( RC /= 0 ) THEN
-          CALL HCO_ERROR ( 'Cannot allocate BESOU', RC )
+          CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot allocate BESOU', RC )
           RETURN
        ENDIF 
        
@@ -568,7 +569,7 @@ CONTAINS
     IF ( ALLOCATED( HcoIDs   ) ) DEALLOCATE( HcoIDs   )
     IF ( ALLOCATED( SpcNames ) ) DEALLOCATE( SpcNames )
 
-    CALL HCO_LEAVE ( RC ) 
+    CALL HCO_LEAVE( HcoState%Config%Err,RC ) 
 
   END SUBROUTINE HCOX_Gc_RnPbBe_Init
 !EOC
@@ -660,6 +661,7 @@ CONTAINS
 !  26 Feb 2015 - R. Yantosca - Now inline the code that used to be in the
 !                              include file hcox_gc_RnPbBe_include.H.  This
 !                              will result in faster compilation.
+!  08 Jan 2016 - R. Yantosca - Change 54_hp to 54.0_hp to avoid error
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -770,7 +772,7 @@ CONTAINS
                         85.0_hp,     85.0_hp  /)
 
     BESOU(:,22) = (/    25.5_hp,     26.5_hp,     32.0_hp,    40.5_hp,    &
-                          54_hp,     67.5_hp,     69.5_hp,    69.5_hp,    &
+                        54.0_hp,     67.5_hp,     69.5_hp,    69.5_hp,    &
                         69.5_hp,     69.5_hp  /)
 
     BESOU(:,23) = (/    20.5_hp,     21.6_hp,     25.5_hp,    33.0_hp,    &

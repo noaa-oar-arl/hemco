@@ -47,13 +47,14 @@ MODULE HCO_Unit_Mod
 !  16 Mar 2015 - R. Yantosca - Also allow "kg m-2 s-1" and similar units
 !  16 Mar 2015 - R. Yantosca - Add dobsons and dobsons/day units
 !  16 Jun 2015 - R. Yantosca - Add % and percent to the unitless list
+!  07 Jan 2016 - E. Lundgren - Update Avogadro's # to NIST 2014 value
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !DEFINED PARAMETERS:
 !
-  REAL(dp),  PARAMETER :: N_0             = 6.022e+23_dp
+  REAL(dp),  PARAMETER :: N_0             = 6.022140857e+23_dp
   REAL(hp),  PARAMETER :: SEC_IN_DAY      = 86400_hp
   REAL(hp),  PARAMETER :: SEC_IN_LEAPYEAR = SEC_IN_DAY * 366_hp 
   REAL(hp),  PARAMETER :: SEC_IN_REGYEAR  = SEC_IN_DAY * 365_hp
@@ -69,43 +70,43 @@ MODULE HCO_Unit_Mod
   ! in these units.
   ! All characters in this list should be lower case!
   INTEGER,           PARAMETER :: NUL = 37
-  CHARACTER(LEN=15), PARAMETER :: UL(NUL) = (/ '1',             &
-                                               'count',         &
-                                               'unitless',      &
-                                               'fraction',      &
-                                               'factor',        &
-                                               'scale',         &
-                                               'hours',         &
-                                               'v/v',           &
-                                               'v/v/s',         &
-                                               's-1',           &
-                                               's^-1',          &
-                                               'm2/m2',         & 
-                                               'm2m-2',         &
-                                               'kg/kg',         & 
-                                               'kgkg-1',        &
-                                               'mg/m3',         &
-                                               'mg/m2/d',       &
-                                               'k',             & 
-                                               'w/m2',          & 
-                                               'wm-2',          &
-                                               'pptv',          & 
-                                               'ppt',           & 
-                                               'ppbv',          & 
-                                               'ppb',           & 
-                                               'ppmv',          & 
-                                               'ppm',           & 
-                                               'm/s',           &
-                                               'ms-1',          &
-                                               'm',             &
-                                               'cm2cm-2',       &
-                                               'dobsons',       &
+  CHARACTER(LEN=15), PARAMETER :: UL(NUL) = (/ '1          ',   &
+                                               'count      ',   &
+                                               'unitless   ',   &
+                                               'fraction   ',   &
+                                               'factor     ',   &
+                                               'scale      ',   &
+                                               'hours      ',   &
+                                               'v/v        ',   &
+                                               'v/v/s      ',   &
+                                               's-1        ',   &
+                                               's^-1       ',   &
+                                               'm2/m2      ',   & 
+                                               'm2m-2      ',   &
+                                               'kg/kg      ',   & 
+                                               'kgkg-1     ',   &
+                                               'mg/m3      ',   &
+                                               'mg/m2/d    ',   &
+                                               'k          ',   & 
+                                               'w/m2       ',   & 
+                                               'wm-2       ',   &
+                                               'pptv       ',   & 
+                                               'ppt        ',   & 
+                                               'ppbv       ',   & 
+                                               'ppb        ',   & 
+                                               'ppmv       ',   & 
+                                               'ppm        ',   & 
+                                               'm/s        ',   &
+                                               'ms-1       ',   &
+                                               'm          ',   &
+                                               'cm2cm-2    ',   &
+                                               'dobsons    ',   &
                                                'dobsons/day',   &
-                                               'DU',            &
-                                               'pa',            &
-                                               'hpa',           &
-                                               '%',             &
-                                               'percent'      /)
+                                               'DU         ',   &
+                                               'pa         ',   &
+                                               'hpa        ',   &
+                                               '%          ',   &
+                                               'percent    '    /)
 
   ! Accepted units for data on HEMCO standard units. No unit conversion 
   ! is applied to data with any of these units.
@@ -113,17 +114,17 @@ MODULE HCO_Unit_Mod
 
   ! Emission units
   INTEGER,           PARAMETER :: NHE = 6
-  CHARACTER(LEN=15), PARAMETER :: HE(NHE) = (/ 'kg/m2/s',       &
-                                               'kgc/m2/s',      &
-                                               'kg(c)/m2/s',    &
-                                               'kgm-2s-1',      &
-                                               'kgcm-2s-1',     &
+  CHARACTER(LEN=15), PARAMETER :: HE(NHE) = (/ 'kg/m2/s    ', &
+                                               'kgc/m2/s   ', &
+                                               'kg(c)/m2/s ', &
+                                               'kgm-2s-1   ', &
+                                               'kgcm-2s-1  ', &
                                                'kg(c)m-2s-1'  /)
 
   ! Concentration units
   INTEGER,           PARAMETER :: NHC = 3
-  CHARACTER(LEN=15), PARAMETER :: HC(NHC) = (/ 'kg/m3',         &
-                                               'kgm-3',         &
+  CHARACTER(LEN=15), PARAMETER :: HC(NHC) = (/ 'kg/m3 ',        &
+                                               'kgm-3 ',        &
                                                'kgm^-3'       /)
 
   ! Interfaces:
@@ -148,12 +149,17 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCO_Unit_Change_SP( ARRAY,       UNITS, MW_IN, MW_OUT,   &
+  SUBROUTINE HCO_Unit_Change_SP( HcoConfig,   ARRAY, UNITS, MW_IN, MW_OUT,   &
                                  MOLEC_RATIO, YYYY,  MM,    AreaFlag, &
                                  TimeFlag,    FACT,  RC,    KeepSpec   )
 !
+! !USES:
+!
+    USE HCO_TYPES_MOD,    ONLY : ConfigObj 
+!
 ! !INPUT PARAMETERS:
 !
+    TYPE(ConfigObj),  POINTER                 :: HcoConfig 
     CHARACTER(LEN=*), INTENT(IN )             :: UNITS          ! Data unit
     REAL(hp),         INTENT(IN )             :: MW_IN          ! MW g/mol 
     REAL(hp),         INTENT(IN )             :: MW_OUT         ! MW g/mol
@@ -187,8 +193,8 @@ CONTAINS
     ! HCO_UNIT_CHANGE_SP begins here
     !=================================================================
 
-    CALL HCO_Unit_Factor( UNITS,    MW_IN,    MW_OUT, MOLEC_RATIO, YYYY, MM, &
-                          AreaFlag, TimeFlag, Factor, RC, KeepSpec=KeepSpec   )
+    CALL HCO_Unit_Factor( HcoConfig,UNITS, MW_IN, MW_OUT, MOLEC_RATIO, YYYY, &
+                          MM, AreaFlag, TimeFlag, Factor, RC, KeepSpec=KeepSpec   )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Apply correction factor
@@ -218,12 +224,17 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCO_Unit_Change_DP( ARRAY,       UNITS, MW_IN, MW_OUT,   &
+  SUBROUTINE HCO_Unit_Change_DP( HcoConfig,   ARRAY, UNITS, MW_IN, MW_OUT,   &
                                  MOLEC_RATIO, YYYY,  MM,    AreaFlag, &
                                  TimeFlag,    FACT,  RC,    KeepSpec   )
 !
+! !USES:
+!
+    USE HCO_TYPES_MOD,    ONLY : ConfigObj 
+!
 ! !INPUT PARAMETERS:
 !
+    TYPE(ConfigObj),  POINTER                 :: HcoConfig 
     CHARACTER(LEN=*), INTENT(IN )             :: UNITS          ! Data unit
     REAL(hp),         INTENT(IN )             :: MW_IN          ! MW g/mol 
     REAL(hp),         INTENT(IN )             :: MW_OUT         ! MW g/mol
@@ -257,8 +268,8 @@ CONTAINS
     ! HCO_UNIT_CHANGE_DP begins here
     !=================================================================
 
-    CALL HCO_Unit_Factor( UNITS,    MW_IN,    MW_OUT, MOLEC_RATIO, YYYY, MM, &
-                          AreaFlag, TimeFlag, Factor, RC, KeepSpec=KeepSpec   )
+    CALL HCO_Unit_Factor( HcoConfig, UNITS, MW_IN, MW_OUT, MOLEC_RATIO, YYYY, &
+                          MM, AreaFlag, TimeFlag, Factor, RC, KeepSpec=KeepSpec )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Apply correction factor
@@ -342,15 +353,17 @@ CONTAINS
 !
 ! !INTERFACE:
 !
-  SUBROUTINE HCO_Unit_Factor( UNITS, MW_IN,    MW_OUT,   MOLEC_RATIO, YYYY, &
-                              MM,    AreaFlag, TimeFlag, Factor,      RC, KeepSpec )
+  SUBROUTINE HCO_Unit_Factor( HcoConfig, UNITS, MW_IN,    MW_OUT,   MOLEC_RATIO, YYYY, &
+                              MM,       AreaFlag, TimeFlag, Factor,      RC, KeepSpec )
 !
 ! !USES:
 !
-    USE CharPak_Mod, ONLY : CStrip
+    USE HCO_TYPES_MOD,    ONLY : ConfigObj 
+    USE CharPak_Mod,      ONLY : CStrip
 !
 ! !INPUT PARAMETERS:
 !
+    TYPE(ConfigObj),  POINTER               :: HcoConfig 
     CHARACTER(LEN=*), INTENT(IN )           :: UNITS       ! Data unit
     REAL(hp),         INTENT(IN )           :: MW_IN       ! MW g/mol 
     REAL(hp),         INTENT(IN )           :: MW_OUT      ! MW g/mol
@@ -431,11 +444,12 @@ CONTAINS
     !=================================================================
     ! Get scale factor for mass. Force to be a valid factor.
     !=================================================================
-    CALL HCO_UNIT_GetMassScal ( unt, MW_IN, MW_OUT, MOLEC_RATIO, &
-                                Coef1, KeepSpec=KeepSpec )
+    CALL HCO_UNIT_GetMassScal ( HcoConfig, unt, MW_IN, MW_OUT, &
+                                MOLEC_RATIO, Coef1, KeepSpec=KeepSpec )
+                                
     IF ( Coef1 < 0.0_hp ) THEN
        MSG = 'cannot do unit conversion. Mass unit: ' // TRIM(unt)
-       CALL HCO_ERROR ( MSG, RC, ThisLoc = LOC )
+       CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, ThisLoc = LOC )
        RETURN 
     ENDIF
     Factor = Factor * Coef1
@@ -477,15 +491,17 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCO_UNIT_GetMassScal( unt, MW_IN, MW_OUT, MOLEC_RATIO, &
-                                   Scal, KeepSpec )
+  SUBROUTINE HCO_UNIT_GetMassScal( HcoConfig, unt, MW_IN, MW_OUT, &
+                                   MOLEC_RATIO, Scal, KeepSpec )
 !
 ! !USES:
 !
     USE HCO_CharTools_Mod
+    USE HCO_TYPES_MOD,    ONLY : ConfigObj 
 !
 ! !INPUT PARAMETERS:
 !
+    TYPE(ConfigObj),  POINTER               :: HcoConfig 
     CHARACTER(LEN=*), INTENT(IN)            :: unt         ! Input units 
     REAL(hp),         INTENT(IN)            :: MW_IN       ! MW g/mol 
     REAL(hp),         INTENT(IN)            :: MW_OUT      ! MW g/mol
@@ -544,7 +560,7 @@ CONTAINS
        ELSE 
           MSG = 'Cannot determine unit conversion factor for mass - ' // &
                 'not all species parameter are defined!'
-          CALL HCO_MSG(MSG)
+          CALL HCO_MSG(HcoConfig%Err,MSG)
           RETURN
        ENDIF
     ENDIF
@@ -1078,11 +1094,16 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  FUNCTION HCO_UnitTolerance( ) Result ( UnitTolerance )
+  FUNCTION HCO_UnitTolerance( HcoConfig ) Result ( UnitTolerance )
 !
 ! !USES:
 !
+    USE HCO_TYPES_MOD,    ONLY : ConfigObj 
     USE HCO_EXTLIST_MOD,  ONLY : GetExtOpt, CoreNr
+!
+! !INPUT PARAMETERS:
+!
+    TYPE(ConfigObj), POINTER       :: HcoConfig 
 !
 ! !OUTPUT PARAMETERS:
 !
@@ -1108,14 +1129,15 @@ CONTAINS
     ! On first call, try to get unit tolerance value from core settings.
     ! Use value of zero if not specified in the configuration file.
     IF ( Tolerance < 0 ) THEN
-       CALL GetExtOpt ( CoreNr, 'Unit tolerance', OptValInt=Tolerance, &
-                        FOUND=FOUND, RC=RC )
+       CALL GetExtOpt ( HcoConfig, CoreNr, 'Unit tolerance', &
+                        OptValInt=Tolerance, FOUND=FOUND, RC=RC )
+                        
        IF ( .NOT. FOUND ) Tolerance = 0
 
        ! Verbose mode: write to log file
-       IF ( HCO_IsVerb(2) ) THEN
+       IF ( HCO_IsVerb(HcoConfig%Err,2) ) THEN
           WRITE(MSG,*) 'Unit tolerance set to ', Tolerance
-          CALL HCO_MSG(MSG,SEP1=' ',SEP2=' ')
+          CALL HCO_MSG(HcoConfig%Err,MSG,SEP1=' ',SEP2=' ')
        ENDIF
     ENDIF
 
