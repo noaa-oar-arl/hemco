@@ -835,7 +835,7 @@ CONTAINS
                            '', -1, FOUND, TmpDiagn, COL=PS )
           ELSE
              CALL DiagnCont_Find( -1, -1, -1, -1, -1, &
-                           TRIM(cName), -1, FOUND, TmpDiagn, COL=PS )
+                           TRIM(ADJUSTL(cName)), -1, FOUND, TmpDiagn, COL=PS )
           ENDIF
           TmpDiagn => NULL()
 
@@ -860,7 +860,7 @@ CONTAINS
     !----------------------------------------------------------------------
     ! Pass input variables
     !----------------------------------------------------------------------
-    ThisDiagn%cName   = cName
+    ThisDiagn%cName   = ADJUSTL(cName)
     ThisDiagn%OutUnit = TRIM(OutUnit)
 
     ! Optional arguments. If not provided, use default values set in
@@ -875,9 +875,9 @@ CONTAINS
 
     ! long_name attribute. Defaults to container name
     IF ( PRESENT(long_name) ) THEN
-       ThisDiagn%long_name = TRIM(long_name)
+       ThisDiagn%long_name = TRIM(ADJUSTL(long_name))
     ELSE
-       ThisDiagn%long_name = TRIM(cName)
+       ThisDiagn%long_name = TRIM(ADJUSTL(cName))
     ENDIF
 
     !----------------------------------------------------------------------
@@ -1081,7 +1081,7 @@ CONTAINS
     ! Make sure that there is no other diagnostics with this name 
     !-----------------------------------------------------------------------
     CALL DiagnCont_Find( -1, -1, -1, -1, -1, &
-                        Trim(cName), -1, FOUND, TmpDiagn, COL=PS )
+                        Trim(ADJUSTL(cName)), -1, FOUND, TmpDiagn, COL=PS )
     IF ( FOUND ) THEN
        MSG = 'There is already a diagnostics with this name: ' // TRIM(cName)
        CALL HCO_ERROR( MSG, RC, THISLOC=LOC )

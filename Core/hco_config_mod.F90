@@ -683,14 +683,14 @@ CONTAINS
        ! Attributes used by all data types: data type number and 
        ! container name.
        Lct%Dct%DctType      = DctType
-       Lct%Dct%cName        = cName
+       Lct%Dct%cName        = ADJUSTL(cName)
 
        ! Base container specific attributes
        IF ( DctType == HCO_DCTTYPE_BASE ) THEN       
   
           ! Set species name, extension number, emission category, 
           ! hierarchy
-          Lct%Dct%SpcName       = SpcName 
+          Lct%Dct%SpcName       = ADJUStL(SpcName)
           Lct%Dct%Hier          = Int2
           Lct%Dct%ExtNr         = Int3
 
@@ -718,7 +718,7 @@ CONTAINS
           ! Register species name. A list of all species names can be
           ! returned to the atmospheric model to match HEMCO species 
           ! with model species (see Config\_GetSpecNames). 
-          CALL SpecName_Register ( SpcName, RC )
+          CALL SpecName_Register ( ADJUSTL(SpcName), RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
     
        ! Scale factor & mask specific attributes
@@ -2888,6 +2888,7 @@ CONTAINS
           READ( SUBSTR(chrcl), '(a)' ) charout
        ENDIF
     ENDIF 
+    charout = ADJUSTL(charout)
 
   END SUBROUTINE READCHAR 
 !EOC
