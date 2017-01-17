@@ -141,6 +141,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  03 Feb 2015 - C. Keller   - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -149,16 +150,16 @@ CONTAINS
 !
     INTEGER                 :: nLonEdge, nLatEdge
     INTEGER                 :: NX, NY, NZ, NLEV, NTIME, NCELLS
-    INTEGER                 :: I, J, L, T, AS
+    INTEGER                 :: I, J, L, T, AS, I2
     INTEGER                 :: nIndex
     REAL(sp), ALLOCATABLE   :: LonEdgeI(:)
     REAL(sp), ALLOCATABLE   :: LatEdgeI(:)
     REAL(sp)                :: LonEdgeO(HcoState%NX+1)
     REAL(sp)                :: LatEdgeO(HcoState%NY+1)
 
-    REAL(sp), POINTER       :: ORIG_2D(:,:)     => NULL()
-    REAL(sp), POINTER       :: REGR_2D(:,:)     => NULL()
-    REAL(sp), POINTER       :: REGR_4D(:,:,:,:) => NULL()
+    REAL(sp), POINTER       :: ORIG_2D(:,:)
+    REAL(sp), POINTER       :: REGR_2D(:,:)
+    REAL(sp), POINTER       :: REGR_4D(:,:,:,:)
 
     REAL(sp), ALLOCATABLE, TARGET :: FRACS(:,:,:,:)
     REAL(hp), ALLOCATABLE         :: REGFRACS(:,:,:,:) 
@@ -175,6 +176,11 @@ CONTAINS
     !=================================================================
     ! REGRID_MAPA2A begins here
     !=================================================================
+
+    ! Init
+    ORIG_2D => NULL()
+    REGR_2D => NULL()
+    REGR_4D => NULL()
 
     ! Check for verbose mode
     verb = HCO_IsVerb(HcoState%Config%Err,  3 )
@@ -386,10 +392,29 @@ CONTAINS
           ENDIF
 
           ! REGR_4D are the remapped fractions.
-          WHERE ( REGFRACS > MAXFRACS ) 
-             MAXFRACS = REGR_4D
-             INDECES  = IVAL
-          END WHERE 
+          DO T  = 1, NTIME
+          DO L  = 1, NLEV
+          DO J  = 1, HcoState%NY
+          DO I2 = 1, HcoState%NX
+             IF ( REGFRACS(I2,J,L,T) > MAXFRACS(I2,J,L,T) ) THEN
+                MAXFRACS(I2,J,L,T) = REGR_4D(I2,J,L,T)
+                INDECES (I2,J,L,T) = IVAL
+             ENDIf
+          ENDDO
+          ENDDO
+          ENDDO
+          ENDDO
+
+!------------------------------------------------------------------------------
+! Prior to 9/29/16:
+!          ! This code is preblematic in Gfortran.  Replace it with the
+!          ! explicit DO loops above.  Leave this here for reference.
+!          ! (sde, bmy, 9/21/16)
+!          WHERE ( REGFRACS > MAXFRACS ) 
+!             MAXFRACS = REGR_4D
+!             INDECES  = IVAL
+!          END WHERE 
+!------------------------------------------------------------------------------
        ENDIF
 
     ENDDO !I
@@ -1492,17 +1517,21 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  30 Dec 2014 - C. Keller   - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
     INTEGER               :: I, NZ, ILEV, TOPLEV
     REAL(hp)              :: THICK
-    REAL(hp), POINTER     :: EDG(:) => NULL()
+    REAL(hp), POINTER     :: EDG(:)
     REAL(hp), ALLOCATABLE :: WGT(:)
 
     !=================================================================
     ! COLLAPSE begins here
     !=================================================================
+
+    ! Init
+    EDG => NULL()
 
     ! Reset
     Lct%Dct%Dta%V3(T)%Val(:,:,OutLev) = 0.0_hp

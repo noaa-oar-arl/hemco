@@ -72,6 +72,7 @@ MODULE HCOX_DustGinoux_Mod
 !  29 Sep 2014 - R. Yantosca - Now make NBINS a variable and not a parameter
 !  29 Sep 2014 - R. Yantosca - Now use F90 free-format indentation
 !  08 Jul 2015 - M. Sulprizio- Now include dust alkalinity source (tdf 04/10/08)
+!  14 Oct 2016 - C. Keller   - Now use HCO_EvalFld instead of HCO_GetPtr.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -90,9 +91,9 @@ MODULE HCOX_DustGinoux_Mod
   REAL,    ALLOCATABLE :: DUSTREFF  (:)     ! effective radius [um] 
 
   ! Source functions (get from HEMCO core) 
-  REAL(sp), POINTER    :: SRCE_SAND(:,:) => NULL()
-  REAL(sp), POINTER    :: SRCE_SILT(:,:) => NULL()
-  REAL(sp), POINTER    :: SRCE_CLAY(:,:) => NULL()
+  REAL(hp), POINTER    :: SRCE_SAND(:,:) => NULL()
+  REAL(hp), POINTER    :: SRCE_SILT(:,:) => NULL()
+  REAL(hp), POINTER    :: SRCE_CLAY(:,:) => NULL()
 
   ! Transfer coefficient (grid-dependent)
   REAL(dp)             :: CH_DUST 
@@ -116,6 +117,7 @@ CONTAINS
 !
 ! !USES:
 !
+    USE HCO_Calc_Mod,     ONLY : HCO_EvalFld
     USE HCO_EmisList_Mod, ONLY : HCO_GetPtr
     USE HCO_FluxArr_Mod,  ONLY : HCO_EmisAdd 
     USE HCO_Clock_Mod,    ONLY : HcoClock_First
@@ -163,6 +165,7 @@ CONTAINS
 !                              M=3 but was picked when M=2.  Now corrected.
 !  26 Jun 2015 - E. Lundgren - Add L. Zhang new dust size distribution scheme
 !  08 Jul 2015 - M. Sulprizio- Now include dust alkalinity source (tdf 04/10/08)
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -192,7 +195,7 @@ CONTAINS
     REAL(hp), TARGET  :: FLUX_ALK(HcoState%NX,HcoState%NY,NBINS)
 
     ! Pointers
-    REAL(hp), POINTER :: Arr2D(:,:) => NULL()
+    REAL(hp), POINTER :: Arr2D(:,:)
 
     !=======================================================================
     ! HCOX_DUSTGINOUX_RUN begins here!
@@ -220,24 +223,25 @@ CONTAINS
     ! Init
     FLUX     = 0.0_hp
     FLUX_ALK = 0.0_hp
+    Arr2D    => NULL()
 
     !=================================================================
     ! Point to DUST source functions 
     !=================================================================
-    IF ( HcoClock_First(HcoState%Clock,.TRUE.) ) THEN
+    !IF ( HcoClock_First(HcoState%Clock,.TRUE.) ) THEN
 
        ! Sand
-       CALL HCO_GetPtr ( am_I_Root, HcoState, 'GINOUX_SAND', SRCE_SAND, RC )
+       CALL HCO_EvalFld ( am_I_Root, HcoState, 'GINOUX_SAND', SRCE_SAND, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
        ! Silt
-       CALL HCO_GetPtr ( am_I_Root, HcoState, 'GINOUX_SILT', SRCE_SILT, RC )
+       CALL HCO_EvalFld ( am_I_Root, HcoState, 'GINOUX_SILT', SRCE_SILT, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
        ! Clay
-       CALL HCO_GetPtr ( am_I_Root, HcoState, 'GINOUX_CLAY', SRCE_CLAY, RC )
+       CALL HCO_EvalFld ( am_I_Root, HcoState, 'GINOUX_CLAY', SRCE_CLAY, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
-    ENDIF
+    !ENDIF
 
     !=================================================================
     ! Compute dust emisisons
@@ -450,7 +454,7 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Scalars
-    INTEGER                        :: N, nSpc, nSpcAlk
+    INTEGER                        :: N, AS, nSpc, nSpcAlk
     CHARACTER(LEN=255)             :: MSG
     REAL(dp)                       :: Mp, Rp, TmpScal
     LOGICAL                        :: FOUND
@@ -549,6 +553,19 @@ CONTAINS
     ALLOCATE ( FRAC_S  (NBINS) ) 
     ALLOCATE ( DUSTDEN (NBINS) ) 
     ALLOCATE ( DUSTREFF(NBINS) ) 
+
+    ! Allocate arrays
+    ALLOCATE ( SRCE_SAND ( HcoState%NX, HcoState%NY ), & 
+               SRCE_SILT ( HcoState%NX, HcoState%NY ), & 
+               SRCE_CLAY ( HcoState%NX, HcoState%NY ), & 
+               STAT = AS )
+    IF ( AS /= 0 ) THEN
+       CALL HCO_ERROR(HcoState%Config%Err,'Allocation error', RC )
+       RETURN
+    ENDIF
+    SRCE_SAND = 0.0_hp
+    SRCE_SILT = 0.0_hp
+    SRCE_CLAY = 0.0_hp
 
     !=======================================================================
     ! Setup for simulations that use 4 dust bins (w/ or w/o TOMAS)
@@ -746,9 +763,9 @@ CONTAINS
     !=======================================================================
  
     ! Free pointer
-    SRCE_SAND => NULL()
-    SRCE_SILT => NULL()
-    SRCE_CLAY => NULL()
+    IF ( ASSOCIATED( SRCE_SAND ) ) DEALLOCATE( SRCE_SAND ) 
+    IF ( ASSOCIATED( SRCE_SILT ) ) DEALLOCATE( SRCE_SILT )
+    IF ( ASSOCIATED( SRCE_CLAY ) ) DEALLOCATE( SRCE_CLAY )
 
     ! Cleanup option object
     IF ( ALLOCATED( IPOINT    ) ) DEALLOCATE( IPOINT    )

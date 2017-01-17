@@ -96,6 +96,7 @@ MODULE HCOX_SeaFlux_Mod
 !  01 Jul 2014 - R. Yantosca - Now use F90 free-format indentation
 !  01 Jul 2014 - R. Yantosca - Cosmetic changes in ProTeX headers
 !  06 Nov 2015 - C. Keller   - Now use land type definitions instead of FRCLND
+!  14 Oct 2016 - C. Keller   - Now use HCO_EvalFld instead of HCO_GetPtr.
 !EOP
 !------------------------------------------------------------------------------
 !
@@ -136,7 +137,8 @@ CONTAINS
 !
     USE HCO_FLUXARR_MOD,  ONLY : HCO_EmisAdd
     USE HCO_FLUXARR_MOD,  ONLY : HCO_DepvAdd
-    USE HCO_EMISLIST_MOD, ONLY : HCO_GetPtr 
+    USE HCO_CALC_MOD,     ONLY : HCO_EvalFld
+!    USE HCO_EMISLIST_MOD, ONLY : HCO_GetPtr 
 !
 ! !INPUT PARAMETERS:
 !
@@ -150,6 +152,7 @@ CONTAINS
 !
 ! !REVISION HISTORY: 
 !  16 Apr 2013 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -160,13 +163,13 @@ CONTAINS
     INTEGER            :: OcID, HcoID
     REAL(hp), TARGET   :: SOURCE(HcoState%NX,HcoState%NY) 
     REAL(hp), TARGET   :: SINK  (HcoState%NX,HcoState%NY)
+    REAL(hp), TARGET   :: SeaConc(HcoState%NX,HcoState%NY)
     CHARACTER(LEN=255) :: ContName
     CHARACTER(LEN=255) :: MSG
     LOGICAL            :: VERBOSE
 
     ! Pointers
-    REAL(sp), POINTER  :: SeaConc(:,:) => NULL()
-    REAL(hp), POINTER  :: Arr2D  (:,:) => NULL()
+    REAL(hp), POINTER  :: Arr2D(:,:)
 
     !=================================================================
     ! HCOX_SeaFlux_Run begins here!
@@ -181,6 +184,9 @@ CONTAINS
 
     ! Verbose?
     verbose = HCO_IsVerb(HcoState%Config%Err,1) 
+
+    ! Nullify
+    Arr2D => NULL()
 
     ! ---------------------------------------------------------------
     ! Calculate emissions
@@ -208,7 +214,7 @@ CONTAINS
 
        ! Get seawater concentration of given compound (from HEMCO core).
        ContName = TRIM(OcSpecs(OcID)%OcDataName)
-       CALL HCO_GetPtr ( am_I_Root, HcoState, ContName, SeaConc, RC )
+       CALL HCO_EvalFld ( am_I_Root, HcoState, ContName, SeaConc, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
 
        ! Calculate oceanic source (kg/m2/s) as well as the deposition 
@@ -232,7 +238,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) RETURN
       
        ! Free pointers
-       SeaConc => NULL()
+       !SeaConc => NULL()
 
        ! Eventually add to dry deposition diagnostics
        ContName = 'DRYDEP_VEL_' // TRIM(HcoState%Spc(HcoID)%SpcName)
@@ -295,7 +301,7 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    REAL(sp),        INTENT(INOUT) :: SeaConc(HcoState%NX,HcoState%NY )
+    REAL(hp),        INTENT(INOUT) :: SeaConc(HcoState%NX,HcoState%NY )
     INTEGER,         INTENT(INOUT) :: RC                 ! Error stat 
 
 !

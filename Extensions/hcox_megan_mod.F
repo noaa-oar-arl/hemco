@@ -32,7 +32,7 @@
 ! updated at the end of the run sequence, e.g. they represent the 
 ! instantaneous running average. The e-folding times to be used when
 ! calculating the short=term and long-term running averages are defined 
-! as module parameter below (parameter TAU_HOURS and TAU_DAYS) 
+! as module parameter below (parameter TAU\_HOURS and TAU\_DAYS).
 !\\
 !\\
 ! A similar procedure is also applied to the leaf area index variables.
@@ -183,6 +183,7 @@
 !                              from Amos Tai (Jan 2013)
 !  05 Nov 2015 - C. Keller   - Reorganize restart variables to running averages.
 !  08 Dec 2015 - C. Keller   - Now treat previous' day LAI as running avg, too.
+!  14 Oct 2016 - C. Keller   - Now use HCO_EvalFld instead of HCO_GetPtr.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -220,14 +221,14 @@
          ! These fields are obtained from ext. data (from config file)
          ! These arrays represent the base emission values in kg(C)/m2/s
          ! that will be scaled based upon meteorological conditions.
-         REAL(sp), POINTER       :: AEF_ISOP(:,:)  
-         REAL(sp), POINTER       :: AEF_MBOX(:,:) 
-         REAL(sp), POINTER       :: AEF_BPIN(:,:) 
-         REAL(sp), POINTER       :: AEF_CARE(:,:) 
-         REAL(sp), POINTER       :: AEF_LIMO(:,:) 
-         REAL(sp), POINTER       :: AEF_OCIM(:,:) 
-         REAL(sp), POINTER       :: AEF_SABI(:,:) 
-         REAL(sp), POINTER       :: GEIA_ORVC(:,:)
+         REAL(hp), POINTER       :: AEF_ISOP(:,:)  
+         REAL(hp), POINTER       :: AEF_MBOX(:,:) 
+         REAL(hp), POINTER       :: AEF_BPIN(:,:) 
+         REAL(hp), POINTER       :: AEF_CARE(:,:) 
+         REAL(hp), POINTER       :: AEF_LIMO(:,:) 
+         REAL(hp), POINTER       :: AEF_OCIM(:,:) 
+         REAL(hp), POINTER       :: AEF_SABI(:,:) 
+         REAL(hp), POINTER       :: GEIA_ORVC(:,:)
    
          ! Annual emission factors arrays
          ! These fields are not read from file, but are computed in CALC_AEF
@@ -338,6 +339,11 @@
 !  30 Sep 2015 - C. Keller   - Now add OCPI flux to BIOGENIC_OCPI diagnostics.
 !  12 Dec 2015 - C. Keller   - Apply e-folding times to past conditions.
 !  07 Jan 2016 - E. Lundgren - Update Avogadro's # to NIST 2014
+!  01 Jun 2016 - R. Yantosca - Bug fix: Now use ExtNrMono in the call to
+!                              Hco_EmisAdd for the MONX (in order to make MONX
+!                              show up as nonzero in HEMCO diagnostics).
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
+!EOP
 !------------------------------------------------------------------------------
 !BOC
 !
@@ -399,7 +405,7 @@
       REAL(hp), TARGET    :: FLUXOSQT  (HcoState%NX,HcoState%NY)
 
       ! For diagnostics
-      REAL(hp), POINTER   :: Arr2D(:,:) => NULL()
+      REAL(hp), POINTER   :: Arr2D(:,:)
       CHARACTER(LEN=63)   :: DiagnName
       CHARACTER(LEN=255)  :: MSG
 
@@ -422,7 +428,7 @@
       REAL(hp), PARAMETER   :: MB_SCALE1  = 0.6_hp
       REAL(hp), PARAMETER   :: MB_SCALE2  = 0.76_hp
 
-      TYPE(MyInst), POINTER :: Inst => NULL()
+      TYPE(MyInst), POINTER :: Inst
 
       !=================================================================
       ! HCOX_Megan_Run begins here! 
@@ -433,6 +439,10 @@
      &               'HCOX_Megan_Run (hcox_megan_mod.F)', RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
       ERR = .FALSE.
+
+      ! Nullify
+      Arr2d => NULL()
+      Inst  => NULL()
 
       ! Get instance
       CALL InstGet ( ExtState%Megan, Inst, RC )
@@ -478,7 +488,7 @@
       FLUXOSQT   = 0.0_hp
       FLUXSESQ   = 0.0_hp
 
-      IF ( FIRST ) THEN
+      !IF ( FIRST ) THEN
          ! Generate annual emission factors for MEGAN inventory
          CALL CALC_AEF( am_I_Root, HcoState, ExtState, Inst, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
@@ -486,7 +496,7 @@
          ! Calculate normalization factor (dbm, 11/2012)
          CALL CALC_NORM_FAC( am_I_Root, Inst, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
-      ENDIF
+      !ENDIF
 
       ! Fill restart variables. This has to be done on the first call
       ! or after rewinding the clock (in replay simulations). 
@@ -761,7 +771,6 @@
 
             ! Add to tracer tendency array [kg C/m2/s]
             FLUXMONO(I,J) = EMIS_MONO
-
          ELSE
             EMIS_MONO = 0.0_hp
             EMIS_MBOX = 0.0_hp
@@ -1325,7 +1334,16 @@
          IF ( Inst%IDTMONX > 0 ) THEN
             ! Add flux to emission array
             CALL HCO_EmisAdd( am_I_Root, HcoState, FLUXMONO, 
-     &                        Inst%IDTMONX, RC, ExtNr=Inst%ExtNr )
+!----------------------------------------------------------------------------
+! Prior to 6/1/16:
+! MONX belongs to the MEGAN_Mono extension, so we should pass ExtNrMono
+! to HCO_EMISADD.  This will not change the emissions (which get added to
+! HcoState anyway), but it will make  MONX show up properly in diagnostics.
+! (bmy, 6/1/16)
+!     &                        RC,        ExtNr=ExtNr )
+!----------------------------------------------------------------------------
+     &                        Inst%IDTMONX, RC, ExtNr=Inst%ExtNrMono )
+
             IF ( RC /= HCO_SUCCESS ) THEN
                CALL HCO_ERROR( HcoState%Config%Err,
      &                  'HCO_EmisAdd error: FLUXMONO', RC )
@@ -1712,7 +1730,7 @@
 !
 ! !IROUTINE: Get_Megan_Emissions
 !
-! !DESCRIPTION: Subroutine Get\_Megan\Emissions computes biogenic emissions in 
+! !DESCRIPTION: Subroutine Get\_Megan\_Emissions computes biogenic emissions in 
 !  units of [kgC/m2/s] or [kg/m2/s] using the MEGAN inventory. (dbm, 12/2012)
 !\\
 !\\
@@ -3138,7 +3156,7 @@
 ! !IROUTINE: CALC_NORM_FAC
 !
 ! !DESCRIPTION: Function CALC\_NORM\_FAC calculates the normalization factor 
-!  needed to compute emissions. Called from GET_MEGAN_EMISSIONS.
+!  needed to compute emissions. Called from GET\_MEGAN\_EMISSIONS.
 !\\
 !\\
 ! !INTERFACE:
@@ -3394,6 +3412,7 @@
 !
       ! References to F90 modules
       USE HCO_EMISLIST_MOD,    ONLY : HCO_GetPtr
+      USE HCO_CALC_MOD,        ONLY : HCO_EvalFld
 !
 ! !INPUT PARAMETERS: 
 !
@@ -3450,22 +3469,22 @@
       REAL(hp)                :: EM_FRAC_CH2O(15)
      
       ! Pointers to CLM4 plant functional types
-      REAL(sp), POINTER       :: PFT_BARE(:,:)                
-      REAL(sp), POINTER       :: PFT_NDLF_EVGN_TMPT_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_NDLF_EVGN_BORL_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_NDLF_DECD_BORL_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_EVGN_TROP_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_EVGN_TMPT_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_DECD_TROP_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_DECD_TMPT_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_DECD_BORL_TREE(:,:) 
-      REAL(sp), POINTER       :: PFT_BDLF_EVGN_SHRB(:,:)     
-      REAL(sp), POINTER       :: PFT_BDLF_DECD_TMPT_SHRB(:,:)
-      REAL(sp), POINTER       :: PFT_BDLF_DECD_BORL_SHRB(:,:)
-      REAL(sp), POINTER       :: PFT_C3_ARCT_GRSS(:,:)       
-      REAL(sp), POINTER       :: PFT_C3_NARC_GRSS(:,:)       
-      REAL(sp), POINTER       :: PFT_C4_GRSS(:,:)            
-      REAL(sp), POINTER       :: PFT_CROP(:,:)               
+      REAL(hp)  :: PFT_BARE(HcoState%NX,HcoState%NY)                
+      REAL(hp)  :: PFT_NDLF_EVGN_TMPT_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_NDLF_EVGN_BORL_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_NDLF_DECD_BORL_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_EVGN_TROP_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_EVGN_TMPT_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_DECD_TROP_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_DECD_TMPT_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_DECD_BORL_TREE(HcoState%NX,HcoState%NY) 
+      REAL(hp)  :: PFT_BDLF_EVGN_SHRB(HcoState%NX,HcoState%NY)     
+      REAL(hp)  :: PFT_BDLF_DECD_TMPT_SHRB(HcoState%NX,HcoState%NY)
+      REAL(hp)  :: PFT_BDLF_DECD_BORL_SHRB(HcoState%NX,HcoState%NY)
+      REAL(hp)  :: PFT_C3_ARCT_GRSS(HcoState%NX,HcoState%NY)       
+      REAL(hp)  :: PFT_C3_NARC_GRSS(HcoState%NX,HcoState%NY)       
+      REAL(hp)  :: PFT_C4_GRSS(HcoState%NX,HcoState%NY)            
+      REAL(hp)  :: PFT_CROP(HcoState%NX,HcoState%NY)               
 
       ! Suffix
       CHARACTER(LEN=255)      :: SFX
@@ -3490,7 +3509,7 @@
       ! Point to external data 
       !-----------------------------------------------------------------
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 'MEGAN_AEF_ISOP'//TRIM(SFX),
+      CALL HCO_EvalFld(am_I_Root, HcoState, 'MEGAN_AEF_ISOP'//TRIM(SFX),
      &                 Inst%AEF_ISOP, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
@@ -3501,9 +3520,9 @@
 
       ! Arrays used if monoterpene switch is turned on
       IF ( Inst%ExtNrMono > 0 ) THEN
-         CALL HCO_GetPtr( am_I_Root, HcoState,
-     &                   'MEGAN_AEF_MBOX'//TRIM(SFX),
-     &                    Inst%AEF_MBOX, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState,
+     &                    'MEGAN_AEF_MBOX'//TRIM(SFX),
+     &                     Inst%AEF_MBOX, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
       
 ! ---> Now compute EF maps for a-pinene and myrcene (dbm, 12/2012)
@@ -3511,19 +3530,19 @@
 !         IF ( RC /= HCO_SUCCESS ) RETURN
 ! <---
 
-         CALL HCO_GetPtr( am_I_Root, HcoState, 
-     &                   'MEGAN_AEF_BPIN'//TRIM(SFX),
-     &                    Inst%AEF_BPIN, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 
+     &                    'MEGAN_AEF_BPIN'//TRIM(SFX),
+     &                     Inst%AEF_BPIN, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
 
-         CALL HCO_GetPtr( am_I_Root, HcoState, 
-     &                   'MEGAN_AEF_CARE'//TRIM(SFX),
-     &                    Inst%AEF_CARE, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 
+     &                    'MEGAN_AEF_CARE'//TRIM(SFX),
+     &                     Inst%AEF_CARE, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
 
-         CALL HCO_GetPtr( am_I_Root, HcoState, 
-     &                   'MEGAN_AEF_LIMO'//TRIM(SFX),
-     &                    Inst%AEF_LIMO, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 
+     &                    'MEGAN_AEF_LIMO'//TRIM(SFX),
+     &                     Inst%AEF_LIMO, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
 
 ! ---> Now compute EF maps for a-pinene and myrcene (dbm, 12/2012)
@@ -3531,21 +3550,21 @@
 !         IF ( RC /= HCO_SUCCESS ) RETURN
 ! <---
 
-         CALL HCO_GetPtr( am_I_Root, HcoState, 
-     &                   'MEGAN_AEF_OCIM'//TRIM(SFX),
-     &                    Inst%AEF_OCIM, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 
+     &                    'MEGAN_AEF_OCIM'//TRIM(SFX),
+     &                     Inst%AEF_OCIM, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
 
-         CALL HCO_GetPtr( am_I_Root, HcoState, 
-     &                   'MEGAN_AEF_SABI'//TRIM(SFX),
-     &                    Inst%AEF_SABI, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 
+     &                    'MEGAN_AEF_SABI'//TRIM(SFX),
+     &                     Inst%AEF_SABI, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
       ENDIF
 
       ! Only used for SOA simulation:
       IF ( Inst%ExtNrSoa > 0 ) THEN
-         CALL HCO_GetPtr( am_I_Root, HcoState, 'MEGAN_ORVC'//TRIM(SFX), 
-     &                    Inst%GEIA_ORVC, RC )
+         CALL HCO_EvalFld( am_I_Root, HcoState, 'MEGAN_ORVC'//TRIM(SFX), 
+     &                     Inst%GEIA_ORVC, RC )
          IF ( RC /= HCO_SUCCESS ) RETURN
       ENDIF
 
@@ -3572,81 +3591,81 @@
       ! PFT_C4_GRSS             : Warm C4 grass
       ! PFT_CROP                : Crop
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 'CLM4_PFT_BARE'//TRIM(SFX), 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 'CLM4_PFT_BARE'//TRIM(SFX), 
      &                 PFT_BARE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_NDLF_EVGN_TMPT_TREE'//TRIM(SFX),
      &                 PFT_NDLF_EVGN_TMPT_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_NDLF_EVGN_BORL_TREE'//TRIM(SFX),
      &                 PFT_NDLF_EVGN_BORL_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_NDLF_DECD_BORL_TREE'//TRIM(SFX),
      &                 PFT_NDLF_DECD_BORL_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_EVGN_TROP_TREE'//TRIM(SFX),
      &                 PFT_BDLF_EVGN_TROP_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_EVGN_TMPT_TREE'//TRIM(SFX),
      &                 PFT_BDLF_EVGN_TMPT_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_DECD_TROP_TREE'//TRIM(SFX),
      &                 PFT_BDLF_DECD_TROP_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_DECD_TMPT_TREE'//TRIM(SFX),
      &                 PFT_BDLF_DECD_TMPT_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_DECD_BORL_TREE'//TRIM(SFX),
      &                 PFT_BDLF_DECD_BORL_TREE, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_EVGN_SHRB'//TRIM(SFX),
      &                 PFT_BDLF_EVGN_SHRB, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_DECD_TMPT_SHRB'//TRIM(SFX),
      &                 PFT_BDLF_DECD_TMPT_SHRB, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                 'CLM4_PFT_BDLF_DECD_BORL_SHRB'//TRIM(SFX),
      &                 PFT_BDLF_DECD_BORL_SHRB, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                'CLM4_PFT_C3_ARCT_GRSS'//TRIM(SFX),
      &                 PFT_C3_ARCT_GRSS, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                'CLM4_PFT_C3_NARC_GRSS'//TRIM(SFX),
      &                 PFT_C3_NARC_GRSS, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 
      &                'CLM4_PFT_C4_GRSS'//TRIM(SFX),
      &                 PFT_C4_GRSS, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
-      CALL HCO_GetPtr( am_I_Root, HcoState, 'CLM4_PFT_CROP'//TRIM(SFX), 
+      CALL HCO_EvalFld( am_I_Root, HcoState, 'CLM4_PFT_CROP'//TRIM(SFX),
      &                 PFT_CROP, RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
 
@@ -3900,23 +3919,23 @@
          
       ENDDO
 
-      ! Nullify pointers
-      PFT_BARE                => NULL()
-      PFT_NDLF_EVGN_TMPT_TREE => NULL()
-      PFT_NDLF_EVGN_BORL_TREE => NULL()
-      PFT_NDLF_DECD_BORL_TREE => NULL()
-      PFT_BDLF_EVGN_TROP_TREE => NULL()
-      PFT_BDLF_EVGN_TMPT_TREE => NULL()
-      PFT_BDLF_DECD_TROP_TREE => NULL()
-      PFT_BDLF_DECD_TMPT_TREE => NULL()
-      PFT_BDLF_DECD_BORL_TREE => NULL()
-      PFT_BDLF_EVGN_SHRB      => NULL()
-      PFT_BDLF_DECD_TMPT_SHRB => NULL()
-      PFT_BDLF_DECD_BORL_SHRB => NULL()
-      PFT_C3_ARCT_GRSS        => NULL()
-      PFT_C3_NARC_GRSS        => NULL()
-      PFT_C4_GRSS             => NULL()
-      PFT_CROP                => NULL()
+!      ! Nullify pointers
+!      PFT_BARE                => NULL()
+!      PFT_NDLF_EVGN_TMPT_TREE => NULL()
+!      PFT_NDLF_EVGN_BORL_TREE => NULL()
+!      PFT_NDLF_DECD_BORL_TREE => NULL()
+!      PFT_BDLF_EVGN_TROP_TREE => NULL()
+!      PFT_BDLF_EVGN_TMPT_TREE => NULL()
+!      PFT_BDLF_DECD_TROP_TREE => NULL()
+!      PFT_BDLF_DECD_TMPT_TREE => NULL()
+!      PFT_BDLF_DECD_BORL_TREE => NULL()
+!      PFT_BDLF_EVGN_SHRB      => NULL()
+!      PFT_BDLF_DECD_TMPT_SHRB => NULL()
+!      PFT_BDLF_DECD_BORL_SHRB => NULL()
+!      PFT_C3_ARCT_GRSS        => NULL()
+!      PFT_C3_NARC_GRSS        => NULL()
+!      PFT_C4_GRSS             => NULL()
+!      PFT_CROP                => NULL()
 
       ! Conversion factor from [ug compound/m2/hr] to [kg compound/m2/s]
       FACTOR = 1.0e-9_hp / 3600.0_hp
@@ -4032,6 +4051,7 @@
 !  11 Apr 2013 - R. Yantosca - Now pass directory info with Input_Opt
 !  18 Feb 2015 - M. Sulprizio- Now allocate AEF arrays for species not read
 !                              from file
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -4043,8 +4063,8 @@
       INTEGER, ALLOCATABLE           :: HcoIDs(:)
       LOGICAL                        :: FOUND
       REAL*8                         :: PI_180
-      REAL(hp), POINTER              :: Ptr2D(:,:) => NULL()
-      TYPE(MyInst), POINTER          :: Inst => NULL()
+      REAL(hp), POINTER              :: Ptr2D(:,:)
+      TYPE(MyInst), POINTER          :: Inst
       CHARACTER(LEN=255)             :: MSG
       CHARACTER(LEN=31), ALLOCATABLE :: SpcNames(:) 
  
@@ -4060,6 +4080,10 @@
       CALL HCO_ENTER( HcoState%Config%Err,
      &                  'HCOX_Megan_Init (hcox_megan_mod.F90)', RC )
       IF ( RC /= HCO_SUCCESS ) RETURN
+
+      ! Nullify
+      Ptr2D => NULL()
+      Inst  => NULL()
 
       ! Create AeroCom instance for this simulation
       CALL InstCreate ( ExtNr, ExtState%Megan, Inst, RC )
@@ -4510,6 +4534,28 @@
       ENDIF
       Inst%AEF_PRPE = 0.0_hp
 
+      ALLOCATE ( Inst%AEF_ISOP ( NX, NY ),
+     &           Inst%AEF_MBOX ( NX, NY ),
+     &           Inst%AEF_BPIN ( NX, NY ),
+     &           Inst%AEF_CARE ( NX, NY ),
+     &           Inst%AEF_LIMO ( NX, NY ),
+     &           Inst%AEF_OCIM ( NX, NY ),
+     &           Inst%AEF_SABI ( NX, NY ), 
+     &           Inst%GEIA_ORVC( NX, NY ), STAT=AS )
+      IF ( AS /= 0 ) THEN 
+         CALL HCO_ERROR( HcoState%Config%Err,
+     &                  'AEF allocation error', RC )
+         RETURN
+      ENDIF
+      Inst%AEF_ISOP  = 0.0_hp
+      Inst%AEF_MBOX  = 0.0_hp
+      Inst%AEF_BPIN  = 0.0_hp
+      Inst%AEF_CARE  = 0.0_hp
+      Inst%AEF_LIMO  = 0.0_hp
+      Inst%AEF_OCIM  = 0.0_hp
+      Inst%AEF_SABI  = 0.0_hp
+      Inst%GEIA_ORVC = 0.0_hp
+
       !=================================================================
       ! Initialize internal diagnostics. These are the restart variables
       ! that can be used for a 'warm' start of MEGAN.
@@ -4699,11 +4745,12 @@
       INTEGER,       INTENT(INOUT)    :: RC 
 !
 ! !REVISION HISTORY:
-!  18 Feb 2016 - C. Keller   - Initial version 
+!  18 Feb 2016 - C. Keller   - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
-      TYPE(MyInst), POINTER          :: TmpInst  => NULL()
+      TYPE(MyInst), POINTER          :: TmpInst
       INTEGER                        :: nnInst
   
       !=================================================================
@@ -4771,14 +4818,16 @@
 !------------------------------------------------------------------------------
 !BOC
       INTEGER                     :: RC
-      TYPE(MyInst), POINTER       :: PrevInst => NULL()
-      TYPE(MyInst), POINTER       :: Inst     => NULL()
+      TYPE(MyInst), POINTER       :: PrevInst
+      TYPE(MyInst), POINTER       :: Inst
 
       !=================================================================
       ! InstRemove begins here!
       !=================================================================
  
       ! Get instance. Also archive previous instance.
+      PrevInst => NULL()
+      Inst     => NULL()
       CALL InstGet ( Instance, Inst, RC, PrevInst=PrevInst )
 
       ! Instance-specific deallocation
@@ -4788,14 +4837,14 @@
        ! Type specific initialization statements follow below
        ! ----------------------------------------------------------------
        ! Nullify pointers
-       Inst%GEIA_ORVC => NULL()
-       Inst%AEF_ISOP  => NULL()
-       Inst%AEF_MBOX  => NULL()
-       Inst%AEF_BPIN  => NULL()
-       Inst%AEF_CARE  => NULL()
-       Inst%AEF_LIMO  => NULL()
-       Inst%AEF_OCIM  => NULL()
-       Inst%AEF_SABI  => NULL()
+       IF( ASSOCIATED( Inst%GEIA_ORVC ) ) DEALLOCATE(Inst%GEIA_ORVC)
+       IF( ASSOCIATED( Inst%AEF_ISOP  ) ) DEALLOCATE(Inst%AEF_ISOP)
+       IF( ASSOCIATED( Inst%AEF_MBOX  ) ) DEALLOCATE(Inst%AEF_MBOX)
+       IF( ASSOCIATED( Inst%AEF_BPIN  ) ) DEALLOCATE(Inst%AEF_BPIN)
+       IF( ASSOCIATED( Inst%AEF_CARE  ) ) DEALLOCATE(Inst%AEF_CARE)
+       IF( ASSOCIATED( Inst%AEF_LIMO  ) ) DEALLOCATE(Inst%AEF_LIMO)
+       IF( ASSOCIATED( Inst%AEF_OCIM  ) ) DEALLOCATE(Inst%AEF_OCIM)
+       IF( ASSOCIATED( Inst%AEF_SABI  ) ) DEALLOCATE(Inst%AEF_SABI)
  
        ! Cleanup module arrays
        IF ( ASSOCIATED( Inst%LAI_PREVDAY     ) ) 

@@ -137,6 +137,7 @@ MODULE HCOX_LightNOx_Mod
 !                              to reduce compilation time.
 !  31 Jul 2015 - C. Keller   - Added option to define scalar/gridded scale 
 !                              factors via HEMCO configuration file. 
+!  14 Oct 2016 - C. Keller   - Now use HCO_EvalFld instead of HCO_GetPtr.
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -178,7 +179,7 @@ MODULE HCOX_LightNOx_Mod
    REAL(hp), POINTER             :: SLBASE(:,:,:)
 
    ! OTD scale factors read through configuration file
-   REAL(sp), POINTER :: OTDLIS(:,:) => NULL()
+   REAL(hp), POINTER :: OTDLIS(:,:) => NULL()
 
    ! Overall scale factor to be applied to lightning NOx emissions. Must
    ! be defined in the HEMCO configuration file as extension attribute 
@@ -244,13 +245,14 @@ CONTAINS
 !  22 Oct 2013 - C. Keller   - Now a HEMCO extension.
 !  07 Oct 2013 - C. Keller   - Now allow OTD-LIS scale factor to be set 
 !                              externally. Check for transition to Sep 2008.
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !   
-    TYPE(MyInst), POINTER :: Inst => NULL()
+    TYPE(MyInst), POINTER :: Inst
     INTEGER               :: Yr, Mt
     LOGICAL               :: FOUND
     CHARACTER(LEN=255)    :: MSG
@@ -272,6 +274,7 @@ CONTAINS
     ! Get pointer to this instance. Varible Inst contains all module 
     ! variables for the current instance. The instance number is
     ! ExtState%<yourname>. 
+    Inst => NULL()
     CALL InstGet ( ExtState%LightNOx, Inst, RC )
     IF ( RC /= HCO_SUCCESS ) THEN 
        WRITE(MSG,*) 'Cannot find lightning NOx instance Nr. ', ExtState%LightNOx
@@ -321,6 +324,7 @@ CONTAINS
 !
 ! !USES:
 !
+    USE HCO_Calc_Mod,     ONLY : HCO_EvalFld
     USE HCO_EmisList_Mod, ONLY : HCO_GetPtr      
     USE HCO_GeoTools_Mod, ONLY : HCO_LANDTYPE
     USE HCO_Clock_Mod,    ONLY : HcoClock_Get
@@ -371,7 +375,8 @@ CONTAINS
 !  31 Jul 2015 - C. Keller   - Take into account scalar/gridded scale factors
 !                              defined in HEMCO configuration file.
 !  03 Mar 2016 - C. Keller   - Use buoyancy in combination with convective 
-!                              fraction CNV_FRC (ESMF only). 
+!                              fraction CNV_FRC (ESMF only).
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -393,8 +398,8 @@ CONTAINS
     INTEGER           :: LNDTYPE, SFCTYPE
     INTEGER           :: DiagnID
     REAL(hp), TARGET  :: DIAGN(HcoState%NX,HcoState%NY,3)
-    REAL(hp), POINTER :: Arr2D(:,:) => NULL() 
-    TYPE(DiagnCont), POINTER :: TmpCnt => NULL()
+    REAL(hp), POINTER :: Arr2D(:,:)
+    TYPE(DiagnCont), POINTER :: TmpCnt
     REAL(hp)          :: TROPP
     REAL(dp)          :: TmpScale
 
@@ -409,6 +414,10 @@ CONTAINS
     CALL HCO_ENTER( HcoState%Config%Err, 'LightNOx (hcox_lightnox_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
+    ! Init
+    Arr2D  => NULL() 
+    TmpCnt => NULL()
+
     ! ----------------------------------------------------------------
     ! First call routines
     ! ----------------------------------------------------------------
@@ -421,11 +430,11 @@ CONTAINS
                              '', 0, Inst%DoDiagn, TmpCnt )
        TmpCnt => NULL()
 
-       ! Eventually get OTD-LIS local redistribution factors from HEMCO.
-       IF ( Inst%LOTDLOC ) THEN
-          CALL HCO_GetPtr( am_I_Root, HcoState, 'LIGHTNOX_OTDLIS', Inst%OTDLIS, RC )
-          IF ( RC /= HCO_SUCCESS ) RETURN
-       ENDIF
+!       ! Eventually get OTD-LIS local redistribution factors from HEMCO.
+!       IF ( Inst%LOTDLOC ) THEN
+!          CALL HCO_GetPtr( am_I_Root, HcoState, 'LIGHTNOX_OTDLIS', Inst%OTDLIS, RC )
+!          IF ( RC /= HCO_SUCCESS ) RETURN
+!       ENDIF
 
        ! Get scale factor. 
        ! - Try to read from configuration file first.
@@ -439,6 +448,12 @@ CONTAINS
           CALL GET_OTD_LIS_SCALE( am_I_Root, HcoState, Inst%OTD_LIS_SCALE, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
        ENDIF
+    ENDIF
+
+    ! Eventually get OTD-LIS local redistribution factors from HEMCO.
+    IF ( Inst%LOTDLOC ) THEN
+       CALL HCO_EvalFld( am_I_Root, HcoState, 'LIGHTNOX_OTDLIS', Inst%OTDLIS, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     ! Reset arrays 
@@ -1585,7 +1600,8 @@ CONTAINS
 !  14 Jan 2015 - L. Murray   - Updated GEOS-FP files through Oct 2014
 !  01 Apr 2015 - R. Yantosca - Cosmetic changes
 !  01 Apr 2015 - R. Yantosca - Bug fix: GRID025x0325 should be GRID025x03125
-!  01 Mar 2016 - L. Murray   - Add preliminary values for MERRA-2
+!  01 Mar 2016 - L. Murray   - Add preliminary values for MERRA-2 4x5, NA, CH
+!  19 Jul 2016 - L. Murray   - Add preliminary values for MERRA-2 2x2.5
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1622,7 +1638,7 @@ CONTAINS
 #elif defined( GRID025x03125 ) && defined( NESTED_NA )
     REAL*8, PARAMETER     :: ANN_AVG_FLASHRATE = 6.7167603d0
 
-#elif defined( GRID05x0625   ) && defined( NESTED_CH )
+#elif defined( GRID05x0625   ) && defined( NESTED_AS )
     REAL*8, PARAMETER     :: ANN_AVG_FLASHRATE = 9.1040315d0
 
 #elif defined( GRID05x0625   ) && defined( NESTED_NA )
@@ -1748,10 +1764,10 @@ CONTAINS
     ! met fields become available (ltm, 2016-03-01).
     BETA = ANN_AVG_FLASHRATE / 256.00370d0
 
-#elif defined( MERRA2 ) && defined( GRID05x0625  ) && defined( NESTED_CH )
+#elif defined( MERRA2 ) && defined( GRID05x0625  ) && defined( NESTED_AS )
 
     !---------------------------------------
-    ! MERRA-2: Nested China simulation
+    ! MERRA-2: Nested Asia simulation
     !---------------------------------------
 
     ! Constrained with simulated "climatology" for
@@ -1765,9 +1781,10 @@ CONTAINS
     ! MERRA2: 2 x 2.5 global simulation
     !---------------------------------------
 
-    ! To be generated. Force graceful model stop below by
-    ! setting BETA equal to 1.0 here (ltm, 2016-03-01).
-    BETA = 1d0
+    ! Constrained with simulated "climatology" for
+    ! Jan 2009 - Dec 2014. Will need to be updated as more
+    ! met fields become available (ltm, 2016-07-19).
+    BETA = ANN_AVG_FLASHRATE / 319.85d0
 
 #elif defined( MERRA2 ) && defined( GRID4x5 )
 
@@ -1970,6 +1987,7 @@ CONTAINS
 !  22 Oct 2013 - C. Keller   - Now a HEMCO extension.
 !  26 Feb 2015 - R. Yantosca - Now re-introduce reading the CDF table from an
 !                              ASCII file (reduces compilation time)
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1982,7 +2000,7 @@ CONTAINS
     INTEGER, ALLOCATABLE           :: HcoIDs(:)
     CHARACTER(LEN=31), ALLOCATABLE :: SpcNames(:)
     CHARACTER(LEN=255)             :: MSG, LOC, FILENAME
-    TYPE(MyInst), POINTER          :: Inst => NULL()
+    TYPE(MyInst), POINTER          :: Inst
 
     !=======================================================================
     ! HCOX_LightNOX_Init begins here!
@@ -1997,6 +2015,7 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Create AeroCom instance for this simulation
+    Inst => NULL()
     CALL InstCreate ( ExtNr, ExtState%LightNOx, Inst, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        CALL HCO_ERROR ( HcoState%Config%Err, 'Cannot create AeroCom instance', RC )
@@ -2080,6 +2099,16 @@ CONTAINS
        RETURN
     ENDIF
     Inst%SLBASE = 0d0
+
+    ! Allocate SLBASE (holds NO emissins from lightning)
+    IF ( Inst%LOTDLOC ) THEN 
+       ALLOCATE( Inst%OTDLIS(HcoState%NX,HcoState%NY), STAT=AS )
+       IF( AS /= 0 ) THEN
+          CALL HCO_ERROR ( HcoState%Config%Err, 'OTDLIS', RC )
+          RETURN
+       ENDIF
+       Inst%OTDLIS = 0d0
+    ENDIF
 
     !=======================================================================
     ! Obtain lightning CDF's from Ott et al [JGR, 2010]. (ltm, 1/25/11)
@@ -2287,11 +2316,12 @@ CONTAINS
     INTEGER,       INTENT(INOUT)    :: RC 
 !
 ! !REVISION HISTORY:
-!  18 Feb 2016 - C. Keller   - Initial version 
+!  18 Feb 2016 - C. Keller   - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
-    TYPE(MyInst), POINTER          :: TmpInst  => NULL()
+    TYPE(MyInst), POINTER          :: TmpInst
     INTEGER                        :: nnInst
 
     !=================================================================
@@ -2356,6 +2386,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  18 Feb 2016 - C. Keller   - Initial version 
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -2368,12 +2399,14 @@ CONTAINS
     !=================================================================
  
     ! Get instance. Also archive previous instance.
+    PrevInst => NULL()
+    Inst     => NULL()
     CALL InstGet ( Instance, Inst, RC, PrevInst=PrevInst )
 
     ! Instance-specific deallocation
     IF ( ASSOCIATED(Inst) ) THEN 
        ! Free pointer
-       Inst%OTDLIS => NULL()
+       IF ( ASSOCIATED( Inst%OTDLIS        ) ) DEALLOCATE ( Inst%OTDLIS        )
 
        IF ( ASSOCIATED( Inst%PROFILE       ) ) DEALLOCATE ( Inst%PROFILE       )
        IF ( ASSOCIATED( Inst%SLBASE        ) ) DEALLOCATE ( Inst%SLBASE        )

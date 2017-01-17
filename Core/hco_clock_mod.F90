@@ -81,6 +81,7 @@ MODULE HCO_CLOCK_MOD
   PUBLIC :: HcoClock_CalcDOY
   PUBLIC :: HcoClock_Increase
   PUBLIC :: HcoClock_EmissionsDone
+  PUBLIC :: HcoClock_SetLast
   PUBLIC :: Get_LastDayOfMonth
 !
 ! !REMARKS:
@@ -215,6 +216,8 @@ CONTAINS
        HcoState%Clock%SimHour      = -1
        HcoState%Clock%SimMin       = -1
        HcoState%Clock%SimSec       = -1
+
+       HcoState%Clock%isLast       = .FALSE.
 
        ! local time vectors
        HcoState%Clock%ntz = nTimeZones 
@@ -390,14 +393,15 @@ CONTAINS
 !  12 Jun 2014 - R. Yantosca - Now use F90 freeform indentation
 !  08 Jul 2014 - C. Keller   - Now calculate DOY if not provided
 !  12 Jan 2015 - C. Keller   - Added IsEmisTime 
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL ARGUMENTS:
 !
-    TYPE(HcoClock), POINTER  :: Clock => NULL()
-    TYPE(ConfigObj),POINTER  :: CF    => NULL()
+    TYPE(HcoClock), POINTER  :: Clock
+    TYPE(ConfigObj),POINTER  :: CF
     REAL(sp)                 :: UTC
     INTEGER                  :: DUM, DOY
     INTEGER                  :: UseYr, UseMt, UseDy, UseHr
@@ -641,7 +645,8 @@ CONTAINS
                             sYYYY,   sMM, sDD,  sH,       &
                             sM,      sS,                  &
                             LMD,     nSteps,    cMidMon,  &
-                            dslmm,   dbtwmm,    IsEmisTime, RC ) 
+                            dslmm,   dbtwmm,    IsEmisTime, &
+                            IsLast,  RC ) 
 !
 ! !USES:
 !
@@ -681,6 +686,7 @@ CONTAINS
     INTEGER, INTENT(  OUT), OPTIONAL     :: dslmm      ! days since last mid-month
     INTEGER, INTENT(  OUT), OPTIONAL     :: dbtwmm     ! days between mid-month
     LOGICAL, INTENT(  OUT), OPTIONAL     :: IsEmisTime ! days between mid-month
+    LOGICAL, INTENT(  OUT), OPTIONAL     :: IsLast     ! last time step? 
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
@@ -778,6 +784,9 @@ CONTAINS
           IsEmisTime = .TRUE.
        ENDIF 
     ENDIF
+
+    ! Last step
+    IF ( PRESENT(IsLast) ) IsLast = Clock%isLast
 
     ! Return w/ success
     RC = HCO_SUCCESS 
@@ -1607,13 +1616,14 @@ CONTAINS
 ! !REVISION HISTORY: 
 !  29 Jul 2014 - C. Keller - Initial version 
 !  08 Sep 2014 - C. Keller - Bug fix: now calculate UTC as fraction of day.
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    TYPE(HcoClock),  POINTER  :: Clock => NULL()
+    TYPE(HcoClock),  POINTER  :: Clock
     INTEGER                   :: YYYYMMDD, HHMMSS
     INTEGER                   :: Yr, Mt, Dy, Hr, Mn, Sc
     REAL(dp)                  :: DAY, UTC, JD
@@ -1697,6 +1707,44 @@ CONTAINS
     RC = HCO_SUCCESS
 
   END SUBROUTINE HcoClock_EmissionsDone
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !IROUTINE: HcoClock_SetLast
+!
+! !DESCRIPTION: Subroutine HcoClock\_SetLast sets the IsLast flag.
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE HcoClock_SetLast( am_I_Root, Clock, IsLast, RC ) 
+!
+! !INPUT PARAMETERS: 
+!  
+    LOGICAL,         INTENT(IN   ) :: am_I_Root ! Root CPU 
+    TYPE(HcoClock),  POINTER       :: Clock     ! HEMCO clock obj 
+    LOGICAL,         INTENT(IN   ) :: IsLast    ! Is last time step?
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,         INTENT(INOUT) :: RC        ! Success or failure?
+!
+! !REVISION HISTORY: 
+!  01 Nov 2016 - C. Keller - Initial version 
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Update flag
+    Clock%IsLast = IsLast 
+
+    ! Return w/ success
+    RC = HCO_SUCCESS
+
+  END SUBROUTINE HcoClock_SetLast
 !EOC
 END MODULE HCO_CLOCK_MOD
 !EOM

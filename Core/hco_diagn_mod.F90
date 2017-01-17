@@ -112,6 +112,7 @@ MODULE HCO_Diagn_Mod
   USE HCO_Types_Mod
   USE HCO_Arr_Mod
   USE HCO_Clock_Mod 
+  USE HCO_State_Mod, ONLY : HCO_State
 
   IMPLICIT NONE
   PRIVATE
@@ -152,9 +153,20 @@ MODULE HCO_Diagn_Mod
   PRIVATE :: DiagnCollection_DefineID 
   PRIVATE :: DiagnCollection_Find
   PRIVATE :: Diagn_UpdateDriver
+  PRIVATE :: Diagn_UpdateSp0d
+  PRIVATE :: Diagn_UpdateSp2d
+  PRIVATE :: Diagn_UpdateSp3d
+  PRIVATE :: Diagn_UpdateDp0d
+  PRIVATE :: Diagn_UpdateDp2d
+  PRIVATE :: Diagn_UpdateDp3d
 
   INTERFACE Diagn_Update
-     MODULE PROCEDURE Diagn_UpdateAll
+     MODULE PROCEDURE Diagn_UpdateSp0d
+     MODULE PROCEDURE Diagn_UpdateSp2d
+     MODULE PROCEDURE Diagn_UpdateSp3d
+     MODULE PROCEDURE Diagn_UpdateDp0d
+     MODULE PROCEDURE Diagn_UpdateDp2d
+     MODULE PROCEDURE Diagn_UpdateDp3d
   END INTERFACE
 !
 ! !REVISION HISTORY:
@@ -170,6 +182,8 @@ MODULE HCO_Diagn_Mod
 !                              control the file output time stamp (beginning, 
 !                              middle, end of diagnostics interval).
 !  25 Jan 2016 - R. Yantosca - Added bug fixes for pgfortran compiler
+!  19 Sep 2016 - R. Yantosca - Add extra overloaded functions to the 
+!                              Diagn_Update interface to avoid Gfortran errors
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -233,6 +247,7 @@ CONTAINS
 !  19 Dec 2013 - C. Keller   - Initial version 
 !  11 Jun 2014 - R. Yantosca - Cosmetic changes in ProTeX headers
 !  11 Jun 2014 - R. Yantosca - Now use F90 freeform indentation
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -241,17 +256,19 @@ CONTAINS
 !
     CHARACTER(LEN=255)        :: MSG, LOC
     INTEGER                   :: I, tmpID
-    REAL(hp), POINTER         :: Arr3D(:,:,:) => NULL()
-    REAL(hp), POINTER         :: Arr2D(:,:)   => NULL()
+    REAL(hp), POINTER         :: Arr3D(:,:,:)
+    REAL(hp), POINTER         :: Arr2D(:,:)
 
     !=================================================================
     ! HCODIAGN_AUTOUPDATE begins here!
     !=================================================================
     
     ! Init 
-    LOC = 'HCODIAGN_AUTOUPDATE (hco_diagn_mod.F90)'
-    RC  = HCO_SUCCESS
-    
+    LOC   = 'HCODIAGN_AUTOUPDATE (hco_diagn_mod.F90)'
+    RC    =  HCO_SUCCESS
+    Arr3D => NULL()
+    Arr2D => NULL()
+
     ! ================================================================
     ! AutoFill diagnostics: only write diagnostics at species level
     ! (level 1). Higher level diagnostics have been written in the
@@ -768,6 +785,7 @@ CONTAINS
 !  19 Dec 2013 - C. Keller - Initialization
 !  05 Mar 2015 - C. Keller - container ID can now be set by the user
 !  31 Mar 2015 - C. Keller - added argument OkIfExist
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -775,9 +793,9 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Pointers
-    TYPE(DiagnCont),       POINTER :: ThisDiagn => NULL()
-    TYPE(DiagnCont),       POINTER :: TmpDiagn  => NULL()
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCont),       POINTER :: ThisDiagn
+    TYPE(DiagnCont),       POINTER :: TmpDiagn
+    TYPE(DiagnCollection), POINTER :: ThisColl
 
     ! Scalars
     CHARACTER(LEN=255)             :: LOC, MSG
@@ -789,6 +807,11 @@ CONTAINS
     !======================================================================
     ! Diagn_Create begins here!
     !======================================================================
+
+    ! Nullify
+    ThisDiagn => NULL()
+    TmpDiagn  => NULL()
+    ThisColl  => NULL()
 
     ! Init
     LOC = 'Diagn_Create (hco_diagn_mod.F90)'
@@ -855,7 +878,7 @@ CONTAINS
 
     ! long_name attribute. Defaults to container name
     IF ( PRESENT(long_name) ) THEN
-       ThisDiagn%long_name = TRIM(ADJUSTL(long_name))
+       ThisDiagn%long_name = TRIM(long_name)
     ELSE
        ThisDiagn%long_name = TRIM(ADJUSTL(cName))
     ENDIF
@@ -1061,9 +1084,12 @@ CONTAINS
     CALL DiagnCont_Find( HcoState%Diagn, -1, -1, -1, -1, -1, &
                         Trim(ADJUSTL(cName)), -1, FOUND, TmpDiagn, COL=PS )
     IF ( FOUND ) THEN
-       MSG = 'There is already a diagnostics with this name: ' // TRIM(cName)
-       CALL HCO_ERROR( HcoState%config%Err, MSG, RC, THISLOC=LOC )
-       RETURN
+!       MSG = 'There is already a diagnostics with this name: ' // TRIM(cName)
+!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+!       RETURN
+       ThisDiagn%cName = trim(cName) // '_a'
+       MSG = 'Changed Diagn name to ' // trim(ThisDiagn%cName)
+       CALL HCO_MSG ( HcoState%Config%Err, MSG )
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -1126,22 +1152,374 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !ROUTINE: Diagn_UpdateAll
+! !ROUTINE: Diagn_UpdateSp0d
 !
-! !DESCRIPTION: Subroutine Diagn\_UpdateDp is the wrapper routine to update 
-! the diagnostics for double precision arrays. It invokes the main diagnostics
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp0d is the wrapper routine to update 
+! the diagnostics for single precision scalar values.  It invokes the main 
+! diagnostics update routine with the appropriate arguments. 
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE Diagn_UpdateSp0d( am_I_Root,   HcoState, cID,   cName,   ExtNr, &
+                               Cat,         Hier,   HcoID,   AutoFill,       &
+                               Scalar,      Total,  PosOnly, COL,            &
+                               MinDiagnLev, RC                         )
+!
+! !INPUT PARAMETERS:
+!
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(sp),         INTENT(IN   )           :: Scalar         ! 0D scalar 
+    REAL(sp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+!
+! !REVISION HISTORY:
+!  20 Apr 2015 - C. Keller - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Scalar and
+!                              Array3d (put those in other overloaded methods)
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Call down to driver routine
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       &  
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Scalar_SP   = Scalar,      &
+                             Total_SP    = Total,       & 
+                             PosOnly     = PosOnly,     &  
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
+
+  END SUBROUTINE Diagn_UpdateSp0d
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: Diagn_UpdateSp2d
+!
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp2d is the wrapper routine to update 
+! the diagnostics for single precision 2-D arrays.  It invokes the main 
+! diagnostics update routine with the appropriate arguments. 
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE Diagn_UpdateSp2d( am_I_Root,   HcoState, cID,   cName,   ExtNr,     &
+                               Cat,         Hier,  HcoID,   AutoFill,  &
+                               Array2D,     Total, PosOnly, COL,       &
+                               MinDiagnLev, RC                        )
+!
+! !INPUT PARAMETERS:
+!
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(sp),         INTENT(IN   )           :: Array2D(:,:)   ! 2D array 
+    REAL(sp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+!
+! !REVISION HISTORY:
+!  20 Apr 2015 - C. Keller - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Scalar and
+!                              Array3d (put those in other overloaded methods)
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Call down to driver routine
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       &  
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Array2D_SP  = Array2D,     & 
+                             Total_SP    = Total,       & 
+                             PosOnly     = PosOnly,     &  
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
+
+  END SUBROUTINE Diagn_UpdateSp2d
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: Diagn_UpdateSp3d
+!
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp is the wrapper routine to update 
+! the diagnostics for single precision 3-D arrays. It invokes the main 
+! diagnostics update routine with the appropriate arguments. 
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE Diagn_UpdateSp3d( am_I_Root,   HcoState, cID,   cName,   ExtNr,     &   
+                               Cat,         Hier,  HcoID,   AutoFill,  &
+                               Array3D,     Total, PosOnly, COL,       &
+                               MinDiagnLev, RC                        )
+!
+! !INPUT PARAMETERS:
+!
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(sp),         INTENT(IN   )           :: Array3D(:,:,:) ! 3D array 
+    REAL(sp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+!
+! !REVISION HISTORY:
+!  20 Apr 2015 - C. Keller - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Scalar and
+!                              Array2d (put those in other overloaded methods)
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Call down to driver routine
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       & 
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Array3D_SP  = Array3D,     & 
+                             Total_SP    = Total,       & 
+                             PosOnly     = PosOnly,     & 
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
+
+  END SUBROUTINE Diagn_UpdateSp3d
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: Diagn_UpdateDp0d
+!
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp0d is the wrapper routine to update 
+! the diagnostics for double-precision scalar values.  It invokes the main 
+! diagnostics update routine with the appropriate arguments. 
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE Diagn_UpdateDp0d( am_I_Root,   HcoState, cID,   cName,   ExtNr,     & 
+                               Cat,         Hier,  HcoID,   AutoFill,  &
+                               Scalar,      Total, PosOnly, COL,       &
+                               MinDiagnLev, RC                        )
+!
+! !INPUT PARAMETERS:
+!
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(dp),         INTENT(IN   )           :: Scalar         ! 1D scalar 
+    REAL(dp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+!
+! !REVISION HISTORY:
+!  20 Apr 2015 - C. Keller   - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Array2d and
+!                              Array3d (put those in other overloaded methods)
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Call down to driver routine
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       &  
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Scalar      = Scalar,      & 
+                             Total       = Total,       & 
+                             PosOnly     = PosOnly,     &  
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
+
+  END SUBROUTINE Diagn_UpdateDp0d
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: Diagn_UpdateDp2d
+!
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp2d is the wrapper routine to update 
+! the diagnostics for single precision 2D arrays.  It invokes the main 
+! diagnostics update routine with the appropriate arguments. 
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE Diagn_UpdateDp2d( am_I_Root,   HcoState, cID,   cName,   ExtNr,     & 
+                               Cat,         Hier,  HcoID,   AutoFill,  &
+                               Array2D,     Total, PosOnly, COL,       &
+                               MinDiagnLev, RC                        )
+!
+! !INPUT PARAMETERS:
+!
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(dp),         INTENT(IN   )           :: Array2D(:,:)   ! 2D array 
+    REAL(dp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
+!
+! !REVISION HISTORY: 
+!  20 Apr 2015 - C. Keller   - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Scalar and
+!                              Array3d (put those in other overloaded methods)
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+
+    ! Call down to driver routine
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       &  
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Array2D     = Array2D,     & 
+                             Total       = Total,       & 
+                             PosOnly     = PosOnly,     &  
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
+
+  END SUBROUTINE Diagn_UpdateDp2d
+!EOC
+!------------------------------------------------------------------------------
+!                  Harvard-NASA Emissions Component (HEMCO)                   !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: Diagn_UpdateDp3d
+!
+! !DESCRIPTION: Subroutine Diagn\_UpdateSp3d is the wrapper routine to update 
+! the diagnostics for single precision arrays. It invokes the main diagnostics
 ! update routine with the appropriate arguments. 
 !\\
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE Diagn_UpdateAll( am_I_Root, HcoState, cID,        cName,       &
-                           ExtNr,     Cat,        Hier,       HcoID,       &
-                           AutoFill,  Scalar,     Array2D,    Array3D,     &
-                           Total,     Scalar_DP,  Array2D_DP, Array3D_DP, &
-                           Total_DP,  Scalar_SP,  Array2D_SP, Array3D_SP, &
-                           Total_SP,  PosOnly,    COL,        MinDiagnLev, &
-                           RC                                               )
+  SUBROUTINE Diagn_UpdateDp3d( am_I_Root,   HcoState, cID,   cName,   ExtNr, &   
+                               Cat,         Hier,  HcoID,   AutoFill,        &
+                               Array3D,     Total, PosOnly, COL,             &
+                               MinDiagnLev, RC                        )
 !
 ! !USES:
 !
@@ -1149,81 +1527,55 @@ CONTAINS
 !
 ! !INPUT PARAMETERS:
 !
-    LOGICAL,          INTENT(IN   )           :: am_I_Root         ! Root CPU?
-    TYPE(HCO_State),  POINTER                 :: HcoState          ! HEMCO state obj
-    INTEGER,          INTENT(IN   ), OPTIONAL :: cID               ! Assigned 
-                                                                   !  container ID
-    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName             ! Diagnostics 
-                                                                   !  name
-    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr             ! Extension #
-    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat               ! Category 
-    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier              ! Hierarchy 
-    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID             ! HEMCO species
-                                                                   !  ID number 
-    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill          ! 1=yes; 0=no; 
-                                                                   ! -1=either 
-
-    REAL(sp),         INTENT(IN   ), OPTIONAL :: Scalar_SP         ! 1D scalar 
-    REAL(sp),         INTENT(IN   ), OPTIONAL :: Array2D_SP(:,:)   ! 2D array 
-    REAL(sp),         INTENT(IN   ), OPTIONAL :: Array3D_SP(:,:,:) ! 3D array 
-    REAL(sp),         INTENT(IN   ), OPTIONAL :: Total_SP          ! Total 
-
-    REAL(dp),         INTENT(IN   ), OPTIONAL :: Scalar_DP            ! 1D scalar 
-    REAL(dp),         INTENT(IN   ), OPTIONAL :: Array2D_DP   (:,:)   ! 2D array 
-    REAL(dp),         INTENT(IN   ), OPTIONAL :: Array3D_DP   (:,:,:) ! 3D array 
-    REAL(dp),         INTENT(IN   ), OPTIONAL :: Total_DP             ! Total 
-
-    REAL(hp),         INTENT(IN   ), OPTIONAL :: Scalar               ! 1D scalar 
-    REAL(hp),         INTENT(IN   ), OPTIONAL :: Array2D      (:,:)   ! 2D array 
-    REAL(hp),         INTENT(IN   ), OPTIONAL :: Array3D      (:,:,:) ! 3D array 
-    REAL(hp),         INTENT(IN   ), OPTIONAL :: Total                ! Total 
-
-    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly           ! Use only vals
-                                                                   !  >= 0?
-    INTEGER,          INTENT(IN   ), OPTIONAL :: COL               ! Collection Nr.
-    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev       ! minimum diagn level 
+    LOGICAL,          INTENT(IN   )           :: am_I_Root      ! Root CPU?
+    TYPE(HCO_State),  POINTER                 :: HcoState       ! HEMCO state obj
+    INTEGER,          INTENT(IN   ), OPTIONAL :: cID            ! Assigned 
+                                                                !  container ID
+    CHARACTER(LEN=*), INTENT(IN   ), OPTIONAL :: cName          ! Diagnostics 
+                                                                !  name
+    INTEGER,          INTENT(IN   ), OPTIONAL :: ExtNr          ! Extension #
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Cat            ! Category 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: Hier           ! Hierarchy 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: HcoID          ! HEMCO species
+                                                                !  ID number 
+    INTEGER,          INTENT(IN   ), OPTIONAL :: AutoFill       ! 1=yes; 0=no; 
+                                                                ! -1=either 
+    REAL(dp),         INTENT(IN   )           :: Array3D(:,:,:) ! 3D array 
+    REAL(dp),         INTENT(IN   ), OPTIONAL :: Total          ! Total 
+    LOGICAL,          INTENT(IN   ), OPTIONAL :: PosOnly        ! Use only vals
+                                                                !  >= 0?
+    INTEGER,          INTENT(IN   ), OPTIONAL :: COL            ! Collection Nr.
+    INTEGER,          INTENT(IN   ), OPTIONAL :: MinDiagnLev    ! minimum diagn level 
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    INTEGER,          INTENT(INOUT)           :: RC                ! Return code 
+    INTEGER,          INTENT(INOUT)           :: RC             ! Return code 
 !
 ! !REVISION HISTORY:
-!  20 Apr 2015 - C. Keller - Initialization
+!  20 Apr 2015 - C. Keller   - Initialization
+!  19 Sep 2016 - R. Yantosca - Rewritten for Gfortran: remove Scalar and
+!                              Array2d (put those in other overloaded methods)
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 
     ! Call down to driver routine
-    CALL Diagn_UpdateDriver( am_I_Root, HcoState, & 
-                       cID = cID, & 
-                       cName = cName, & 
-                       ExtNr = ExtNr, & 
-                       Cat = Cat, & 
-                       Hier = Hier, & 
-                       HcoID = HcoID, & 
-                       AutoFill = AutoFill, & 
+    CALL Diagn_UpdateDriver( am_I_Root, HcoState,       & 
+                             cID         = cID,         & 
+                             cName       = cName,       & 
+                             ExtNr       = ExtNr,       & 
+                             Cat         = Cat,         & 
+                             Hier        = Hier,        & 
+                             HcoID       = HcoID,       & 
+                             AutoFill    = AutoFill,    & 
+                             Array3D     = Array3D,     & 
+                             Total       = Total,       & 
+                             PosOnly     = PosOnly,     & 
+                             COL         = COL,         & 
+                             MinDiagnLev = MinDiagnLev, & 
+                             RC          = RC )
 
-                       Scalar_HP = Scalar, & 
-                       Array2D_HP = Array2D, & 
-                       Array3D_HP = Array3D, & 
-                       Total_HP   = Total,   & 
-
-                       Scalar = Scalar_DP, & 
-                       Array2D = Array2D_DP, & 
-                       Array3D = Array3D_DP, & 
-                       Total   = Total_DP,   & 
-
-                       Scalar_SP = Scalar_SP, & 
-                       Array2D_SP = Array2D_SP, & 
-                       Array3D_SP = Array3D_SP, & 
-                       Total_SP   = Total_SP,   & 
-
-                       PosOnly = PosOnly, & 
-                       COL = COL, & 
-                       MinDiagnLev = MinDiagnLev, & 
-                       RC = RC )
-
-  END SUBROUTINE Diagn_UpdateAll
+  END SUBROUTINE Diagn_UpdateDp3d
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
@@ -1292,7 +1644,6 @@ CONTAINS
 !
 ! !USES:
 !
-    USE HCO_State_Mod, ONLY : HCO_State
     USE HCO_Arr_Mod,   ONLY : HCO_ArrAssert
 !
 ! !INPUT PARAMETERS:
@@ -1334,6 +1685,7 @@ CONTAINS
 !  11 Mar 2015 - C. Keller - Now allow scanning of all diagnostic collections
 !  13 Mar 2015 - C. Keller - Bug fix: only prompt warning if it's a new timestep
 !  17 Jun 2015 - C. Keller - Added argument MinDiagnLev
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1341,11 +1693,11 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Pointers
-    TYPE(DiagnCollection), POINTER :: ThisColl      => NULL()
-    TYPE(DiagnCont),       POINTER :: ThisDiagn     => NULL()
-    REAL(sp),              POINTER :: Arr2D (:,:)   => NULL()
-    REAL(sp),              POINTER :: Tmp2D (:,:)   => NULL()
-    REAL(sp),              POINTER :: Arr3D (:,:,:) => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
+    TYPE(DiagnCont),       POINTER :: ThisDiagn
+    REAL(sp),              POINTER :: Arr2D (:,:)
+    REAL(sp),              POINTER :: Tmp2D (:,:)
+    REAL(sp),              POINTER :: Arr3D (:,:,:)
     REAL(sp)                       :: TmpScalar
 
     ! Scalars
@@ -1369,8 +1721,13 @@ CONTAINS
     !======================================================================
 
     ! Init
-    LOC = 'Diagn_UpdateDriver (hco_diagn_mod.F90)'
-    RC  = HCO_SUCCESS
+    LOC       =  'Diagn_UpdateDriver (hco_diagn_mod.F90)'
+    RC        =  HCO_SUCCESS
+    ThisColl  => NULL()
+    ThisDiagn => NULL()
+    Arr2D     => NULL()
+    Tmp2D     => NULL()
+    Arr3D     => NULL()
 
     ! Get collection number. 
     CALL DiagnCollection_DefineID( HcoState%Diagn, PS, RC, COL=COL, DEF=-1, &
@@ -1905,13 +2262,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
     INTEGER                        :: PS, AF
     LOGICAL                        :: TimeToWrite
     LOGICAL                        :: FOUND, CF
@@ -1922,9 +2280,10 @@ CONTAINS
     !======================================================================
 
     ! Init
-    FLAG   = HCO_FAIL
-    RC     = HCO_SUCCESS
-    CF     = .FALSE.
+    FLAG     =  HCO_FAIL
+    RC       =  HCO_SUCCESS
+    CF       = .FALSE.
+    ThisColl => NULL()
 
     ! Get collection number
     CALL DiagnCollection_DefineID( HcoState%Diagn, PS, RC, COL=COL, &
@@ -2061,13 +2420,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  15 Mar 2015 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    TYPE(DiagnCont),  POINTER  :: DgnCont => NULL() 
+    TYPE(DiagnCont),  POINTER  :: DgnCont
     INTEGER                    :: PS
     LOGICAL                    :: FND
 
@@ -2076,9 +2436,10 @@ CONTAINS
     !======================================================================
 
     ! Init
-    RC    = HCO_FAIL
-    Total = 0.0_sp
-    FND   = .FALSE.
+    RC      = HCO_FAIL
+    Total   = 0.0_sp
+    DgnCont => NULL() 
+    FND     = .FALSE.
     IF ( PRESENT(FOUND) ) THEN
        FOUND = .FALSE.
     ENDIF
@@ -2145,6 +2506,7 @@ CONTAINS
 !  19 Dec 2013 - C. Keller   - Initialization
 !  25 Jan 2016 - R. Yantosca - Bug fix for pgfortran compiler: Test if the
 !                              TMPCONT object is associated before deallocating
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -2152,14 +2514,15 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Pointers
-    TYPE(DiagnCont), POINTER  :: TmpCont => NULL()
-    TYPE(DiagnCont), POINTER  :: NxtCont => NULL()
+    TYPE(DiagnCont), POINTER  :: TmpCont
+    TYPE(DiagnCont), POINTER  :: NxtCont
 
     !======================================================================
     ! Diagn_Cleanup begins here!
     !======================================================================
 
     ! Walk through entire list and remove all containers
+    NxtCont => NULL()
     TmpCont => DiagnList
     DO WHILE ( ASSOCIATED( TmpCont ) ) 
 
@@ -2168,12 +2531,6 @@ CONTAINS
 
        ! Clean up this container 
        CALL DiagnCont_Cleanup( TmpCont )
-!-------------------------------------------------------------------------
-! Prior to 1/25/16:
-! Make sure that TMPCONT is associated before deallocating.
-! The pgfortran compiler will choke on this (bmy, 1/25/16)
-!       DEALLOCATE ( TmpCont )
-!-------------------------------------------------------------------------
        IF ( ASSOCIATED( TmpCont ) ) DEALLOCATE ( TmpCont )
 
        ! Advance
@@ -2213,13 +2570,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
     INTEGER                        :: I, RC, PS
     LOGICAL                        :: InUse
 
@@ -2229,6 +2587,7 @@ CONTAINS
 
     ! Initialize
     IsDefined = .FALSE.
+    ThisColl  => NULL()
 
     ! Get collection number
     CALL DiagnCollection_DefineID( Diagn, PS, RC, COL=COL, DEF=-1, &
@@ -2300,13 +2659,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! LOCAL VARIABLES:
 !
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
     INTEGER                        :: PS
     LOGICAL                        :: FOUND
 
@@ -2315,6 +2675,7 @@ CONTAINS
     !======================================================================
 
     ! Init
+    ThisColl => NULL()
     IF ( PRESENT(Prefix      ) ) Prefix       = ''
     IF ( PRESENT(InUse       ) ) InUse        = .FALSE. 
     IF ( PRESENT(nnDiagn     ) ) nnDiagn      = 0 
@@ -2383,13 +2744,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! LOCAL VARIABLES:
 !
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
     INTEGER                        :: PS
     LOGICAL                        :: FOUND
 
@@ -2398,6 +2760,7 @@ CONTAINS
     !======================================================================
 
     ! Init
+    ThisColl => NULL()
     IF ( PRESENT(InUse    ) ) InUse     = .FALSE. 
 
     ! Get collection number
@@ -2584,13 +2947,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  19 Dec 2013 - C. Keller: Initialization
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    TYPE(DiagnCollection), POINTER :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER :: ThisColl
     LOGICAL                        :: FOUND
     INTEGER                        :: I, J, YYYY, MM
     REAL(hp)                       :: norm1, mult1, DPY, totscal
@@ -2605,6 +2969,7 @@ CONTAINS
     ! Init
     RC  = HCO_SUCCESS
     LOC = 'DiagnCont_PrepareOutput (hco_diagn_mod.F90) '
+    ThisColl => NULL()
     
     !-----------------------------------------------------------------------
     ! Don't do anything for pointer data and/or if data is already in 
@@ -2862,6 +3227,7 @@ CONTAINS
 !  19 Dec 2013 - C. Keller: Initialization
 !  25 Sep 2014 - C. Keller: Added Resume flag
 !  09 Apr 2015 - C. Keller: Can now search all collections
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -2869,8 +3235,8 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     INTEGER                            :: RC, PS
-    TYPE(DiagnCont),       POINTER     :: CurrCnt  => NULL() 
-    TYPE(DiagnCollection), POINTER     :: ThisColl => NULL() 
+    TYPE(DiagnCont),       POINTER     :: CurrCnt
+    TYPE(DiagnCollection), POINTER     :: ThisColl
     LOGICAL                            :: IsMatch, InUse, Rsm
  
     !======================================================================
@@ -2878,7 +3244,9 @@ CONTAINS
     !======================================================================
 
     ! Initialize
-    FOUND  = .FALSE.
+    FOUND    = .FALSE.
+    CurrCnt  => NULL() 
+    ThisColl => NULL()
 
     ! Get collection number
     CALL DiagnCollection_DefineID( Diagn, PS, RC, COL=COL, Def=-1, &
@@ -3226,13 +3594,14 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  01 Aug 2014 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !ARGUMENTS:
 !
-    TYPE(DiagnCollection), POINTER    :: ThisColl => NULL()
+    TYPE(DiagnCollection), POINTER    :: ThisColl
     CHARACTER(LEN=255)                :: MSG 
     INTEGER                           :: RC, PS, nx, ny, nz
     REAL(sp)                          :: sm
@@ -3240,6 +3609,9 @@ CONTAINS
     ! ================================================================
     ! Diagn_Print begins here
     ! ================================================================
+
+    ! Initialize
+    ThisColl => NULL()
 
     ! Get collection number
     CALL DiagnCollection_DefineID( HcoState%Diagn, PS, RC, &
@@ -3463,11 +3835,12 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  08 Jan 2015 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
-! !ARGUMENTS:
+! !LOCAL VARIABLES:
 !
     TYPE(DiagnCollection), POINTER ::  ThisColl => NULL()
     TYPE(DiagnCollection), POINTER ::  NextColl => NULL()
@@ -3478,6 +3851,7 @@ CONTAINS
 
     ! Do for every collection in list
     ThisColl => Diagn%Collections
+    NextColl => NULL()
 
     DO WHILE ( ASSOCIATED(ThisColl) ) 
 
@@ -3636,18 +4010,22 @@ CONTAINS
 ! !REVISION HISTORY:
 !  01 Apr 2015 - C. Keller   - Initial version
 !  10 Jul 2015 - R. Yantosca - Fixed minor issues in ProTeX header
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !ARGUMENTS:
 !
-    TYPE(DiagnCollection), POINTER :: TmpColl => NULL()
+    TYPE(DiagnCollection), POINTER :: TmpColl
     CHARACTER(LEN=255), PARAMETER  :: LOC = 'DiagnCollection_Find (hco_diagn_mod.F90)'
 
     ! ================================================================
     ! DiagnCollection_Find begins here
     ! ================================================================
+
+    ! Init
+    TmpColl => NULL()
 
     ! Check if it's negative
     FOUND = .FALSE.
@@ -3856,6 +4234,7 @@ CONTAINS
     INTEGER             :: delta
     INTEGER             :: dymd, lymd, dhms, lhms 
     INTEGER             :: RC
+    LOGICAL             :: IsLast
     CHARACTER(LEN=255)  :: LOC = 'DiagnCollection_IsTimeToWrite (hco_diagn_mod.F90)' 
 
     !=================================================================
@@ -3864,15 +4243,21 @@ CONTAINS
 
     ! Init
     TimeToWrite = .FALSE.
-   
-    ! Get current simulation date
-    CALL HcoClock_Get(am_I_Root, HcoState%Clock, &
-                      sYYYY=YYYY,sMM=MM,sDD=DD,sH=h,sM=m,sS=s,RC=RC)
-    IF ( RC /= HCO_SUCCESS ) RETURN
-
+  
+    ! Get collection time interval
     CALL DiagnCollection_Get( HcoState%Diagn, PS, DeltaYMD=dymd, &
                    LastYMD=lymd, DeltaHMS=dhms, LastHMS=lhms, RC=RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Get current simulation date
+    CALL HcoClock_Get(am_I_Root, HcoState%Clock, IsLast=IsLast, &
+                      sYYYY=YYYY,sMM=MM,sDD=DD,sH=h,sM=m,sS=s,RC=RC)
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Check for last time step
+    IF ( IsLast .AND. dymd == 99999999 .AND. dhms == 999999 ) THEN
+       TimeToWrite = .TRUE.
+    ENDIF
 
     ! Check if we need to write this collection now
     IF ( .NOT. TimeToWrite .AND. dhms > 0 .AND. lhms >= 0 ) THEN

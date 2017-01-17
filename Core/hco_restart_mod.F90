@@ -289,19 +289,23 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  11 Mar 2015 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    REAL(sp), POINTER    :: Ptr3D(:,:,:) => NULL()
+    REAL(sp), POINTER    :: Ptr3D(:,:,:)
     LOGICAL              :: FLD
     CHARACTER(LEN=255)   :: MSG
 
     ! ================================================================
     ! HCO_RestartGet begins here
     ! ================================================================
+
+    ! Init
+    Ptr3D => NULL()
 
     ! Is the output array filled yet?
     FLD = .FALSE.
@@ -432,19 +436,23 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  11 Mar 2015 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
 !
 ! !LOCAL VARIABLES:
 !
-    REAL(sp), POINTER    :: Ptr2D(:,:) => NULL()
+    REAL(sp), POINTER    :: Ptr2D(:,:)
     LOGICAL              :: FLD
     CHARACTER(LEN=255)   :: MSG
 
     ! ================================================================
     ! HCO_RestartGet_2D begins here
     ! ================================================================
+
+    ! Init
+    Ptr2D => NULL()
 
     ! Is the output array filled yet?
     FLD = .FALSE.
@@ -708,6 +716,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  10 Mar 2015 - C. Keller - Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -717,8 +726,8 @@ CONTAINS
     INTEGER                      :: STAT
     TYPE(MAPL_MetaComp), POINTER :: STATE
     TYPE(ESMF_STATE)             :: INTERNAL
-    REAL,                POINTER :: Ptr2D(:,:)   => NULL()
-    REAL,                POINTER :: Ptr3D(:,:,:) => NULL()
+    REAL,                POINTER :: Ptr2D(:,:)
+    REAL,                POINTER :: Ptr3D(:,:,:)
 
     ! ================================================================
     ! HCO_CopyFromIntnal_ESMF begins here
@@ -726,6 +735,10 @@ CONTAINS
 
     ! For MAPL/ESMF error handling (defines Iam and STATUS)
     __Iam__('HCO_CopyFromIntnal_ESMF (HCOI_ESMF_MOD.F90)')
+
+    ! Init
+    Ptr2D => NULL()
+    Ptr3D => NULL()
 
     ! Get internal state
     CALL MAPL_GetObjectFromGC( HcoState%GridComp, STATE, __RC__ )

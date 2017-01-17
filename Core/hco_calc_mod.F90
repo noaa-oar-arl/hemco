@@ -160,6 +160,8 @@ CONTAINS
 !  21 Aug 2014 - C. Keller   - Added concentration.
 !  14 Apr 2016 - C. Keller   - Bug fix: avoid double-counting if multiple 
 !                              regional inventories have the same hierarchy.
+!  19 Sep 2016 - R. Yantosca - Use .neqv. for LOGICAL comparisons
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -167,8 +169,8 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Working pointers: list and data container 
-    TYPE(ListCont), POINTER :: Lct => NULL()
-    TYPE(DataCont), POINTER :: Dct => NULL()
+    TYPE(ListCont), POINTER :: Lct
+    TYPE(DataCont), POINTER :: Dct
 
     ! Temporary emission arrays
     REAL(hp), POINTER       :: OutArr(:,:,:) => NULL()
@@ -216,6 +218,10 @@ CONTAINS
     ! testing only
     ix = 30 
     iy = 34
+
+    ! Initialize
+    Lct => NULL()
+    Dct => NULL()
 
     ! Enter routine 
     CALL HCO_ENTER (HcoState%Config%Err,'HCO_CalcEmis (HCO_CALC_MOD.F90)', RC )
@@ -763,6 +769,7 @@ CONTAINS
 !  29 Dec 2014 - C. Keller   - Added scale factor masks.
 !  02 Mar 2015 - C. Keller   - Now check for missing values. Missing values are
 !                              excluded from emission calculation.
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -770,8 +777,8 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Pointers
-    TYPE(DataCont), POINTER :: ScalDct => NULL()
-    TYPE(DataCont), POINTER :: MaskDct => NULL()
+    TYPE(DataCont), POINTER :: ScalDct
+    TYPE(DataCont), POINTER :: MaskDct
 
     ! Scalars
     REAL(sp)                :: TMPVAL, MaskScale
@@ -780,6 +787,7 @@ CONTAINS
     INTEGER                 :: I, J, L, N
     INTEGER                 :: LowLL, UppLL, ScalLL, TmpLL
     INTEGER                 :: ERROR
+    INTEGER                 :: TotLL, nnLL
     CHARACTER(LEN=255)      :: MSG, LOC
     LOGICAL                 :: NegScalExist
     LOGICAL                 :: MaskFractions
@@ -790,6 +798,10 @@ CONTAINS
     !=================================================================
     ! GET_CURRENT_EMISSIONS begins here
     !=================================================================
+
+    ! Initialize
+    ScalDct => NULL()
+    MaskDct => NULL()
 
     ! Enter
     CALL HCO_ENTER(HcoState%Config%Err,'GET_CURRENT_EMISSIONS', RC )
@@ -823,6 +835,10 @@ CONTAINS
     ! Initialize ERROR. Will be set to 1 if error occurs below
     ERROR = 0
 
+    ! Initialize variables to compute average vertical level index 
+    totLL = 0
+    nnLL  = 0
+
     ! Loop over all latitudes and longitudes
 !$OMP PARALLEL DO                                                      &
 !$OMP DEFAULT( SHARED )                                                &
@@ -846,7 +862,11 @@ CONTAINS
           ERROR = 1 ! Will cause error
           EXIT
        ENDIF 
- 
+
+       ! average upper level
+       totLL = totLL + UppLL
+       nnLL  = nnLL + 1
+
        ! Loop over all levels
        DO L = LowLL, UppLL
 
@@ -1184,7 +1204,10 @@ CONTAINS
     ENDIF ! N > 0 
 
     ! Update optional variables
-    IF ( PRESENT(UseLL) ) UseLL = UppLL
+    IF ( PRESENT(UseLL) ) THEN
+       UseLL = 1
+       IF ( nnLL > 0 ) UseLL = NINT(REAL(TotLL,4)/REAL(nnLL,4))
+    ENDIF
 
     ! Weight output emissions by mask
     OUTARR_3D = OUTARR_3D * MASK
@@ -1250,6 +1273,7 @@ CONTAINS
 !  07 Sep 2014 - C. Keller   - Mask update. Now set mask to zero as soon as 
 !                              on of the applied masks is zero.
 !  02 Mar 2015 - C. Keller   - Now check for missing values
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1257,8 +1281,8 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     ! Pointers
-    TYPE(DataCont), POINTER :: ScalDct => NULL()
-    TYPE(DataCont), POINTER :: MaskDct => NULL()
+    TYPE(DataCont), POINTER :: ScalDct
+    TYPE(DataCont), POINTER :: MaskDct
     REAL(sp)                :: TMPVAL, MaskScale
     INTEGER                 :: tIdx, IDX
     INTEGER                 :: I, J, L, N
@@ -1275,6 +1299,10 @@ CONTAINS
     !=================================================================
     ! GET_CURRENT_EMISSIONS_B begins here
     !=================================================================
+
+    ! Initialize
+    ScalDct => NULL()
+    MaskDct => NULL()
 
     ! Enter
     CALL HCO_ENTER(HcoState%Config%Err,'GET_CURRENT_EMISSIONS_B', RC )
@@ -1655,6 +1683,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  11 May 2015 - C. Keller   - Initial Version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1669,7 +1698,7 @@ CONTAINS
     REAL(hp), ALLOCATABLE   :: Mask(:,:,:)
 
     ! Working pointers: list and data container 
-    TYPE(ListCont), POINTER :: Lct      => NULL()
+    TYPE(ListCont), POINTER :: Lct
 
     ! For error handling & verbose mode
     CHARACTER(LEN=255)  :: MSG
@@ -1681,7 +1710,7 @@ CONTAINS
 
     ! Init 
     RC    = HCO_SUCCESS
-    Arr3D = 0.0_hp
+    Lct   => NULL()
     IF ( PRESENT(FOUND) ) FOUND = .FALSE.
 
     ! Search for base container 
@@ -1698,6 +1727,9 @@ CONTAINS
           RETURN
        ENDIF
     ENDIF
+
+    ! Init 
+    Arr3D = 0.0_hp
 
     ! Define output dimensions
     nI = SIZE(Arr3D,1)
@@ -1772,6 +1804,8 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  11 May 2015 - C. Keller   - Initial Version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
+!  01 Nov 2016 - C. Keller   - Added error trap for UseLL
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1787,19 +1821,19 @@ CONTAINS
     REAL(hp), ALLOCATABLE   :: Arr3D(:,:,:)
 
     ! Working pointers: list and data container 
-    TYPE(ListCont), POINTER :: Lct      => NULL()
+    TYPE(ListCont), POINTER :: Lct
 
     ! For error handling & verbose mode
     CHARACTER(LEN=255)  :: MSG
-    CHARACTER(LEN=255)  :: LOC = "HCO_EvalFld_3d (HCO_calc_mod.F90)"
+    CHARACTER(LEN=255)  :: LOC = "HCO_EvalFld_2d (HCO_calc_mod.F90)"
 
     !=================================================================
     ! HCO_EvalFld_2D begins here!
     !=================================================================
 
     ! Init 
-    RC    = HCO_SUCCESS
-    Arr2D = 0.0_hp
+    RC    = HCO_SUCCESS    
+    Lct   => NULL()
     IF ( PRESENT(FOUND) ) FOUND = .FALSE.
 
     ! Search for base container 
@@ -1816,6 +1850,9 @@ CONTAINS
           RETURN
        ENDIF
     ENDIF
+
+    ! Init Arr2D
+    Arr2D = 0.0_hp
 
     ! Define output dimensions
     nI = SIZE(Arr2D,1)
@@ -1840,18 +1877,21 @@ CONTAINS
 
     ! Calculate emissions for base container
     CALL GET_CURRENT_EMISSIONS( am_I_Root,  HcoState, Lct%Dct, & 
-                                nI, nJ, nL, Arr3D,    Mask, RC, UseLL=UseLL )
+                                nI, nJ, nL, Arr3D, Mask, RC, UseLL=UseLL )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
-    ! For 2D data, we expect UseLL to be 1
+    ! Place 3D array into 2D array. UseLL returns the vertical level into which
+    ! emissions have been added within GET_CURRENT_EMISSIONS. This should be 
+    ! level 1 for most cases but it can be another level if specified so. Return
+    ! a warning if level is not 1 (ckeller, 11/1/16).
+    UseLL = MIN( MAX(useLL,1), SIZE(Arr3D,3) )
     IF ( UseLL /= 1 ) THEN
-       WRITE(MSG,*) "Data is not 2D: " , TRIM(cName), UseLL
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
-       RETURN
+       WRITE(MSG,*) "2D data was emitted above surface - this information might be lost: " , TRIM(cName), UseLL
+       CALL HCO_WARNING( HcoState%Config%Err, MSG, RC, THISLOC=LOC, WARNLEV=2 )
     ENDIF
 
     ! Pass 3D data to 2D array
-    Arr2D(:,:) = Arr3D(:,:,1)
+    Arr2D(:,:) = Arr3D(:,:,UseLL)
 
     ! All done
     IF (ALLOCATED(MASK ) ) DEALLOCATE(MASK )
@@ -1973,6 +2013,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  11 Jun 2015 - C. Keller   - Initial Version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -1984,7 +2025,7 @@ CONTAINS
     LOGICAL                 :: FND, ERR
     LOGICAL                 :: Fractions
 
-    TYPE(ListCont), POINTER :: MaskLct  => NULL() 
+    TYPE(ListCont), POINTER :: MaskLct
 
     CHARACTER(LEN=255)      :: MSG
     CHARACTER(LEN=255)      :: LOC = 'HCO_MaskFld (hco_calc_mod.F90)' 
@@ -1992,6 +2033,9 @@ CONTAINS
     !=================================================================
     ! HCO_MaskFld begins here
     !=================================================================
+
+    ! Nullify
+    MaskLct  => NULL() 
 
     ! Init: default is mask value of 1
     MASK = 1.0_sp
@@ -2340,31 +2384,45 @@ CONTAINS
 
        ! Get bottom height
        h1 = 0.0_hp
-       IF ( LowLL > 1 ) THEN
-          DO L1=1,LowLL-1
-             h1 = h1 + HcoState%Grid%BXHEIGHT_M%Val(I,J,L1)
-          ENDDO 
+       IF ( EmisL1Unit == HCO_EMISL_M .OR. &
+            EmisL1Unit == HCO_EMISL_PBL     ) THEN
+          h1 = EmisL1
+       ELSE
+          IF ( LowLL > 1 ) THEN
+             DO L1=1,LowLL-1
+                h1 = h1 + HcoState%Grid%BXHEIGHT_M%Val(I,J,L1)
+             ENDDO 
+          ENDIF
        ENDIF
+
        ! Only use fraction of lowest level
        IF ( L == LowLL ) THEN
           IF ( EmisL1Unit == HCO_EMISL_M   .OR. & 
                EmisL1Unit == HCO_EMISL_PBL       ) THEN
              dh = h1 + HcoState%Grid%BXHEIGHT_M%Val(I,J,L) - EmisL1
-             h1 = EmisL1
           ENDIF 
        ENDIF
 
        ! Get top height 
        h2 = 0.0_hp
-       DO L1=1,UppLL
-          h2 = h2 + HcoState%Grid%BXHEIGHT_M%Val(I,J,L1)
-       ENDDO
+       IF ( EmisL2Unit == HCO_EMISL_M .OR. &
+            EmisL2Unit == HCO_EMISL_PBL     ) THEN
+          h2 = EmisL2
+       ELSE
+          DO L1=1,UppLL
+             h2 = h2 + HcoState%Grid%BXHEIGHT_M%Val(I,J,L1)
+          ENDDO
+       ENDIF
+
        ! Only use fraction of top level
        IF ( L == UppLL ) THEN
           IF ( EmisL2Unit == HCO_EMISL_M   .OR. & 
                EmisL2Unit == HCO_EMISL_PBL       ) THEN
-             dh = h2 - HcoState%Grid%BXHEIGHT_M%Val(I,J,L) + EmisL2
-             h2 = EmisL2
+             IF ( L > 1 ) THEN
+                dh = EmisL2 - SUM(HcoState%Grid%BXHEIGHT_M%Val(I,J,1:(L-1)))
+             ELSE
+                dh = EmisL2
+             ENDIF
           ENDIF 
        ENDIF
 

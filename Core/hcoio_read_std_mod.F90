@@ -51,6 +51,7 @@ MODULE HCOIO_read_std_mod
   PRIVATE :: HCOIO_ReadCountryValues
   PRIVATE :: HCOIO_ReadFromConfig
   PRIVATE :: GetDataVals 
+  PRIVATE :: GetSliceIdx
   PRIVATE :: FillMaskBox 
 !
 ! !REVISION HISTORY:
@@ -163,6 +164,7 @@ CONTAINS
 !  22 Nov 2015 - C. Keller   - Bug fix: now use Lun2 if reading second file.
 !  24 Mar 2016 - C. Keller   - Simplified handling of file in buffer. Remove
 !                              args LUN and CloseFile.
+!  29 Apr 2016 - R. Yantosca - Don't initialize pointers in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -184,15 +186,15 @@ CONTAINS
     INTEGER                       :: nlatEdge, nlonEdge
     REAL(hp)                      :: MW_g, EmMW_g, MolecRatio
     REAL(sp)                      :: wgt1,   wgt2
-    REAL(sp), POINTER             :: ncArr(:,:,:,:)   => NULL()
-    REAL(sp), POINTER             :: ncArr2(:,:,:,:)  => NULL()
-    REAL(hp), POINTER             :: SigEdge(:,:,:)   => NULL()
-    REAL(hp), POINTER             :: SigLev (:,:,:)   => NULL()
-    REAL(hp), POINTER             :: LonMid   (:)     => NULL()
-    REAL(hp), POINTER             :: LatMid   (:)     => NULL()
-    REAL(hp), POINTER             :: LevMid   (:)     => NULL()
-    REAL(hp), POINTER             :: LonEdge  (:)     => NULL()
-    REAL(hp), POINTER             :: LatEdge  (:)     => NULL()
+    REAL(sp), POINTER             :: ncArr(:,:,:,:)
+    REAL(sp), POINTER             :: ncArr2(:,:,:,:)
+    REAL(hp), POINTER             :: SigEdge(:,:,:)
+    REAL(hp), POINTER             :: SigLev (:,:,:)
+    REAL(hp), POINTER             :: LonMid   (:)
+    REAL(hp), POINTER             :: LatMid   (:)
+    REAL(hp), POINTER             :: LevMid   (:)
+    REAL(hp), POINTER             :: LonEdge  (:)
+    REAL(hp), POINTER             :: LatEdge  (:)
     REAL(hp)                      :: UnitFactor
     LOGICAL                       :: KeepSpec
     LOGICAL                       :: FOUND
@@ -215,6 +217,17 @@ CONTAINS
     ! Enter
     CALL HCO_ENTER( HcoState%Config%Err, 'HCOIO_READ_STD (hcoio_read_std_mod.F90)' , RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Initialize pointers
+    ncArr   => NULL()
+    ncArr2  => NULL()
+    SigEdge => NULL()
+    SigLev  => NULL()
+    LonMid  => NULL()
+    LatMid  => NULL()
+    LevMid  => NULL()
+    LonEdge => NULL()
+    LatEdge => NULL()
 
     ! Get unit tolerance set in configuration file
     UnitTolerance = HCO_UnitTolerance( HcoState%Config )
@@ -1328,7 +1341,7 @@ CONTAINS
     INTEGER               :: prefYr, prefMt, prefDy, prefHr, prefMn
     INTEGER               :: refYear
     INTEGER(8)            :: origYMDh, prefYMDh
-    INTEGER(8), POINTER   :: availYMDh(:) => NULL() 
+    INTEGER(8), POINTER   :: availYMDh(:)
     LOGICAL               :: ExitSearch 
     LOGICAL               :: verb
 
@@ -1348,6 +1361,9 @@ CONTAINS
     YMDh  = 0
     YMDh1 = 0
  
+    ! Initialize pointers
+    availYMDh => NULL() 
+ 
     ! ---------------------------------------------------------------- 
     ! Extract netCDF time slices (YYYYMMDDhh) 
     ! ----------------------------------------------------------------
@@ -1364,7 +1380,7 @@ CONTAINS
     IF ( (refYear <= 1900) .AND. (nTime > 0) ) THEN
        MSG = 'ncdf reference year is prior to 1901 - ' // &
             'time stamps may be wrong!'
-       CALL HCO_WARNING ( MSG, RC, WARNLEV=1 )
+       CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1 )
     ENDIF
 
     ! verbose mode 
@@ -2246,7 +2262,7 @@ CONTAINS
                 'slice. Interpolation will be performed from ',           &
                 availYMDh(tidx1), ' to ', availYMDh(tidx2), '. Data ',    &
                 'container: ', TRIM(Lct%Dct%cName)
-          CALL HCO_WARNING(MSG, RC, WARNLEV=1, THISLOC=LOC)
+          CALL HCO_WARNING(HcoState%Config%Err, MSG, RC, WARNLEV=1, THISLOC=LOC)
        ENDIF
        
        ! Calculate weights wgt1 and wgt2 to be given to slice 1 and 
@@ -2432,7 +2448,7 @@ CONTAINS
 
     ! Prompt a warning
     WRITE(MSG,*) 'No area unit found in ' // TRIM(FN) // ' - convert to m-2!'
-    CALL HCO_WARNING ( MSG, RC, WARNLEV=1, THISLOC=LOC )
+    CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1, THISLOC=LOC )
 
     ! Leave w/ success
     RC = HCO_SUCCESS
@@ -3100,6 +3116,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  22 Dec 2014 - C. Keller: Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3108,9 +3125,9 @@ CONTAINS
 !
     INTEGER               :: IUFILE, IOS
     INTEGER               :: ID1, ID2, I, NT, CID, NLINE
-    REAL(sp), POINTER     :: CNTR(:,:) => NULL()
+    REAL(sp), POINTER     :: CNTR(:,:)
     INTEGER,  ALLOCATABLE :: CIDS(:,:)
-    REAL(hp), POINTER     :: Vals(:) => NULL()
+    REAL(hp), POINTER     :: Vals(:)
     LOGICAL               :: Verb
     CHARACTER(LEN=2047)   :: LINE
     CHARACTER(LEN=255)    :: MSG, DUM, CNT
@@ -3120,6 +3137,10 @@ CONTAINS
     ! HCOIO_ReadCountryValues begins here
     !======================================================================
    
+    ! Init
+    CNTR => NULL()
+    Vals => NULL()
+
     ! verbose mode? 
     Verb = HCO_IsVerb(HcoState%Config%Err,2) 
    
@@ -3316,6 +3337,7 @@ CONTAINS
 !
 ! !REVISION HISTORY:
 !  24 Jul 2014 - C. Keller: Initial version
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -3323,7 +3345,7 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     INTEGER            :: I, NT
-    REAL(hp), POINTER  :: Vals(:) => NULL()
+    REAL(hp), POINTER  :: Vals(:)
     CHARACTER(LEN=255) :: MSG
     CHARACTER(LEN=255) :: LOC = 'HCOIO_ReadFromConfig (hcoio_dataread_mod.F90)'
 
@@ -3331,6 +3353,9 @@ CONTAINS
     ! HCOIO_ReadFromConfig begins here
     !======================================================================
    
+    ! Init
+    Vals => NULL()
+
     ! Verbose
     IF ( HCO_IsVerb(HcoState%Config%Err,2) ) THEN
        WRITE(MSG, *) 'Read from config file: ', TRIM(Lct%Dct%cName)
@@ -3374,6 +3399,26 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) RETURN
        DO I = 1, NT
           Lct%Dct%Dta%V2(I)%Val(1,1) = Vals(I)
+!==============================================================================
+! KLUDGE BY BOB YANTOSCA (05 Jan 2016)
+!
+! This WRITE statement avoids a seg fault in some Intel Fortran Compiler 
+! versions, such as ifort 12 and ifort 13.  The ADVANCE="no" prevents
+! carriage returns from being added to the log file, and the '' character
+! will prevent text from creeping across the screen.
+! 
+! NOTE: This section only gets executed during the initialization phase,
+! when we save data not read from netCDF files into the HEMCO data structure.
+! This type of data includes scale factors and mask data specified as vectors
+! in the HEMCO configuration file.  Therefore, this section will only get
+! executed at startup, so the WRITE statment should not add significant
+! overhead to the simulation. 
+!
+! The root issue seems to be an optimization bug in the compiler.
+!==============================================================================
+#if defined( LINUX_IFORT ) 
+          WRITE( 6, '(a)', ADVANCE='no' ) ''
+#endif
        ENDDO
 
        ! Data is 1D
@@ -3605,7 +3650,7 @@ CONTAINS
     INTEGER            :: prefYr, prefMt, prefDy, prefHr, prefMn
     REAL(hp)           :: UnitFactor 
     REAL(hp)           :: FileVals(100)
-    REAL(hp), POINTER  :: FileArr(:,:,:,:) => NULL()
+    REAL(hp), POINTER  :: FileArr(:,:,:,:)
     LOGICAL            :: IsPerArea
     CHARACTER(LEN=255) :: MSG
     CHARACTER(LEN=255) :: LOC = 'GetDataVals (hcoio_dataread_mod.F90)'
@@ -3614,6 +3659,9 @@ CONTAINS
     ! GetDataVals begins here
     !======================================================================
    
+    ! Initialize
+    FileArr => NULL()
+
     ! Shadow molecular weights and molec. ratio (needed for
     ! unit conversion during file read)
     HcoID = Lct%Dct%HcoID
@@ -3765,12 +3813,12 @@ CONTAINS
              FileArr(1,1,1,:) = 0.0_hp
              MSG = 'Base field outside of range - set to zero: ' // &
                    TRIM(Lct%Dct%cName)
-             CALL HCO_WARNING ( MSG, RC, WARNLEV=1, THISLOC=LOC )
+             CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1, THISLOC=LOC )
           ELSE
              FileArr(1,1,1,:) = 1.0_hp
              MSG = 'Scale factor outside of range - set to one: ' // &
                    TRIM(Lct%Dct%cName)
-             CALL HCO_WARNING ( MSG, RC, WARNLEV=1, THISLOC=LOC )
+             CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1, THISLOC=LOC )
           ENDIF
        ELSE
           FileArr(1,1,1,:) = FileVals(IDX1:IDX2)
@@ -3827,7 +3875,7 @@ CONTAINS
           FileArr = FileArr * HcoState%TS_EMIS
           MSG = 'Data converted from kg/m3/s to kg/m3: ' // &
                 TRIM(Lct%Dct%cName) // ': ' // TRIM(Lct%Dct%Dta%OrigUnit)
-          CALL HCO_WARNING ( MSG, RC, WARNLEV=1, THISLOC=LOC )
+          CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1, THISLOC=LOC )
    
        ! ... emissions or unitless ...
        ELSEIF ( (AreaFlag == -1 .AND. TimeFlag == -1) .OR. &
