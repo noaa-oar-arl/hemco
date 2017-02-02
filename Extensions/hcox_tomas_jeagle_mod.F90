@@ -4,11 +4,13 @@
 !------------------------------------------------------------------------------
 !BOP
 !
-! !MODULE: hcox_tomas_seasalt_mod.F90
+! !MODULE: hcox_tomas_jeagle_mod.F90
 !
-! !DESCRIPTION: Module HCOX\_TOMAS\_SeaSalt\_Mod contains routines to 
+! !DESCRIPTION: Module HCOX\_TOMAS\_JEAGLE\_Mod contains routines to 
 !  calculate sea salt aerosol emissions for the TOMAS aerosol microphysics
-!  package. 
+!  package. JKODROS - This is an update of hcox\_tomas\_seasalt\_mod.F90 to
+!  use Jeagle emissions. Should bring TOMAS emissions in line with bulk sea
+!  salt. 
 !\\
 !\\ 
 !  This is a HEMCO extension module that uses many of the HEMCO core
@@ -24,7 +26,7 @@
 !
 ! !INTERFACE: 
 !
-MODULE HCOX_TOMAS_SeaSalt_Mod
+MODULE HCOX_TOMAS_Jeagle_Mod
 !
 ! !USES:
 ! 
@@ -38,13 +40,15 @@ MODULE HCOX_TOMAS_SeaSalt_Mod
 !
 ! !PUBLIC MEMBER FUNCTIONS:
 !
-  PUBLIC :: HCOX_TOMAS_SeaSalt_Init
-  PUBLIC :: HCOX_TOMAS_SeaSalt_Run
-  PUBLIC :: HCOX_TOMAS_SeaSalt_Final
+  PUBLIC :: HCOX_TOMAS_Jeagle_Init
+  PUBLIC :: HCOX_TOMAS_Jeagle_Run
+  PUBLIC :: HCOX_TOMAS_Jeagle_Final
 !
 ! !REVISION HISTORY:
 !  01 Oct 2014 - R. Yantosca - Initial version, based on TOMAS code
 !  20 May 2015 - J. Kodros   - Added fixes to integrate TOMAS with HEMCO
+!  02 JUL 2015 - J. Kodros   - Updating to use scale factors from Jeagle
+!                              et al. (2011)
 !EOP
 !------------------------------------------------------------------------------
 !
@@ -57,7 +61,7 @@ MODULE HCOX_TOMAS_SeaSalt_Mod
   ! Arrays
   INTEGER,  ALLOCATABLE :: HcoIDs    (:      )    ! HEMCO species ID's
   REAL(dp), ALLOCATABLE :: TOMAS_DBIN(:      )    ! TOMAS bin width
-  REAL(dp), ALLOCATABLE :: TOMAS_A   (:      )    ! TOMAS area? 
+  REAL(dp), ALLOCATABLE :: DRFAC     (:      )    ! TOMAS area? 
   REAL(dp), ALLOCATABLE :: TC1       (:,:,:,:)    ! Aerosol mass
   REAL(dp), ALLOCATABLE :: TC2       (:,:,:,:)    ! Aerosol number
 
@@ -68,16 +72,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_TOMAS_SeaSalt_Run
+! !IROUTINE: HCOX_TOMAS_Jeagle_Run
 !
-! !DESCRIPTION: Subroutine HCOX\_TOMAS\_SeaSalt\_Run emits sea-salt into the 
+! !DESCRIPTION: Subroutine HCOX\_TOMAS\_Jeagle\_Run emits sea-salt into the 
 !  TOMAS sectional sea-salt mass and aerosol number arrays.  Sea-salt emission 
-!  parameterization of Clarke et al. [2006].  Formerly named SRCSALT30.
+!  parameterization of Jeagle et al. (2011).
 !\\
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCOX_TOMAS_SeaSalt_Run( am_I_Root, ExtState, HcoState, RC )
+  SUBROUTINE HCOX_TOMAS_Jeagle_Run( am_I_Root, ExtState, HcoState, RC )
 !
 ! !USES:
 !
@@ -104,6 +108,7 @@ CONTAINS
 !  20 May 2015 - R. Yantosca - Pass am_I_Root to HCO_EMISADD routine
 !  22 May 2015 - R. Yantosca - Extend up to 40 size bins
 !  10 Jul 2015 - R. Yantosca - Fixed minor issues in the ProTeX headers
+!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -114,25 +119,45 @@ CONTAINS
     INTEGER           :: I,      J,    L,      K, HcoID
     REAL(sp)          :: FOCEAN, W10M, DTEMIS
     REAL(dp)          :: F100,   W, A_M2, FEMIS, NUMBER, MASS, NUMBER_TOT
+    REAL(dp)          :: rwet, dfo, B, A, SST, SCALE
+
+    REAL*8, PARAMETER :: BETHA=2.22d0   !wet diameter (80% Rel Hum) to dry diam
 
     ! Strings
     CHARACTER(LEN=31) :: SpcName
        
     ! Pointers
-    REAL(dp), POINTER :: ptr3D(:,:,:) => NULL()
+    REAL(dp), POINTER :: ptr3D(:,:,:)
 
     ! For debugging
     !INTEGER            :: ii=50, jj=10
 
+    ! Error handling	
+    LOGICAL                :: ERR
+
     !=================================================================
     ! SRCSALT30 begins here!
     !=================================================================
+    ! Return if extension disabled
+    IF ( .NOT. ExtState%TOMAS_Jeagle ) RETURN
+
+    ! Enter
+    CALL HCO_ENTER ( HcoState%Config%Err, 'HCOX_TOMAS_Jeagle_Run (hcox_TOMAS_Jeagle_mod.F90)', RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    
+    !INIT VALUES
+    TC1 = 0.0_hp
+    TC2 = 0.0_hp
+
 
     ! Depending on the grid resolution. 4x5 (default) doesn't need 
     ! adjusting coeff
 
     !### Debug
-    !print*, 'JACK IN HCOX TOMAS SEASALT'
+    !print*, 'JACK IN HCOX TOMAS Jeagle'
+
+    ! Init
+    ptr3D => NULL()
 
     ! Emission timestep [s]
     DTEMIS = HcoState%TS_EMIS
@@ -158,21 +183,38 @@ CONTAINS
           ! Wind speed at 10 m altitude [m/s]
           W10M = SQRT( ExtState%U10M%Arr%Val(I,J)**2  &
                +       ExtState%V10M%Arr%Val(I,J)**2 )
-                
-          ! in ocean area - calc wind speed/eqm conc
-          ! calculate the fraction of whitecap coverage
-          W = 3.84E-6 * W10M ** (3.41)
 
+	  ! Sea surface temperature in Celcius 
+	  SST = ExtState%TSKIN%Arr%Val(I,J) - 273.15d0
+
+	  ! Limit SST to 0-30C range
+          SST = MAX( SST , 0d0 )  ! limit to  0C
+          SST = MIN( SST , 30d0 ) ! limit to 30C
+
+          ! Empirical SST scaling factor (jaegle 5/11/11)
+          SCALE = 0.329d0 + 0.0904d0*SST -  &
+                  0.00717d0*SST**2d0 + 0.000207d0*SST**3d0
+                
           !---------------------------------------------------------------
-          ! Partition TOMAS_SeaSalt emissions w/in the boundary layer
+          ! Partition TOMAS_Jeagle emissions w/in the boundary layer
           !---------------------------------------------------------------
           DO K = 1, HcoState%MicroPhys%nBins
-               
-             ! Sea salt number
-             F100   = TOMAS_A(K)
+             rwet=TOMAS_DBIN(k)*1.0E6*BETHA/2. ! convert from dry diameter [m] to wet (80% RH) radius [um]  
+	     ! jkodros - testing out BETHA 7/29/15
+             if (rwet > 0.d0) then
+                  A=4.7*(1.+30.*rwet)**(-0.017*rwet**(-1.44))
+                  B=(0.433-log10(rwet))/0.433
 
-             ! JKODROS get number as flux
-             NUMBER_TOT = F100 * W * FOCEAN * TOMAS_COEF
+                  dfo=1.373*W10M**3.41*rwet**(-1.*A)  & !m-2 um-1 s-1
+                    *(1.+0.057*rwet**3.45)*10.**(1.607*exp(-1.*B**2))
+
+             else
+
+		dfo=0.d0
+	     endif
+
+             dfo=dfo*DRFAC(k)*BETHA  !hemco units???? jkodros
+	     dfo=dfo*focean*SCALE
 
              ! Loop thru the boundary layer
              DO L = 1, HcoState%Nz
@@ -184,7 +226,7 @@ CONTAINS
                 IF ( FEMIS > 0d0 ) THEN
 
                    ! Number
-                   NUMBER = NUMBER_TOT * FEMIS
+                   NUMBER = dfo * FEMIS
 
                    ! Mass
                    MASS   = NUMBER                                      &
@@ -198,6 +240,9 @@ CONTAINS
                 ENDIF
              ENDDO
           ENDDO
+       ELSE
+	TC1(I,J,:,:) = 0d0
+	TC2(I,J,:,:) = 0d0
        ENDIF
     ENDDO
     ENDDO
@@ -212,7 +257,7 @@ CONTAINS
        ! Add mass to the HEMCO data structure (jkodros)
        CALL HCO_EmisAdd( am_I_Root, HcoState, TC2(:,:,:,K), HcoIDs(K), RC)
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: FLUXSALT', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: FLUXSALT', RC )
           RETURN
        ENDIF
 
@@ -269,27 +314,30 @@ CONTAINS
        ! Add number to the HEMCO data structure
        CALL HCO_EmisAdd( am_I_Root, HcoState, TC1(:,:,:,K), HcoID, RC)
        IF ( RC /= HCO_SUCCESS ) THEN
-          CALL HCO_ERROR( 'HCO_EmisAdd error: FLUXSALT', RC )
+          CALL HCO_ERROR( HcoState%Config%Err, 'HCO_EmisAdd error: FLUXSALT', RC )
           RETURN
        ENDIF
     ENDDO
+
+    ! Leave w/ success
+    CALL HCO_LEAVE ( HcoState%Config%Err, RC )
                 
-  END SUBROUTINE HCOX_TOMAS_SeaSalt_Run
+  END SUBROUTINE HCOX_TOMAS_Jeagle_Run
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_TOMAS_SeaSalt_Init
+! !IROUTINE: HCOX_TOMAS_Jeagle_Init
 !
-! !DESCRIPTION: Subroutine HcoX\_TOMAS\_SeaSalt\_Init initializes all
+! !DESCRIPTION: Subroutine HcoX\_TOMAS\_Jeagle\_Init initializes all
 !  extension variables.
 !\\
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCOX_TOMAS_SeaSalt_Init( am_I_Root, HcoState,     &
+  SUBROUTINE HCOX_TOMAS_Jeagle_Init( am_I_Root, HcoState,     &
                                       ExtName,   ExtState, RC ) 
 !
 ! !USES:
@@ -297,7 +345,6 @@ CONTAINS
     USE HCO_State_Mod,   ONLY : HCO_GetHcoID
     USE HCO_STATE_MOD,   ONLY : HCO_GetExtHcoID
     USE HCO_ExtList_Mod, ONLY : GetExtNr
-    USE HCO_ExtList_Mod, ONLY : GetExtOpt
 !
 ! !INPUT PARAMETERS:
 !
@@ -331,15 +378,15 @@ CONTAINS
     CHARACTER(LEN=31), ALLOCATABLE :: SpcNames(:)
 
     !=================================================================
-    ! HCOX_TOMAS_SeaSalt_Init begins here!
+    ! HCOX_TOMAS_Jeagle_Init begins here!
     !=================================================================
 
     ! Extension Nr.
-    ExtNr = GetExtNr( TRIM(ExtName) )
+    ExtNr = GetExtNr( HcoState%Config%ExtList, TRIM(ExtName) )
     IF ( ExtNr <= 0 ) RETURN
  
     ! Enter 
-    CALL HCO_ENTER( 'HCOX_TOMAS_SeaSalt_Init (hcox_tomas_seasalt_mod.F90)', RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOX_TOMAS_Jeagle_Init (hcox_tomas_jeagle_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! ---------------------------------------------------------------------- 
@@ -351,23 +398,23 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
     IF ( nSpc < HcoState%MicroPhys%nBins ) THEN
        MSG = 'Not enough sea salt emission species set' 
-       CALL HCO_ERROR ( MSG, RC ) 
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC ) 
        RETURN
     ENDIF
 
     ! Allocate TOMAS_DBIN
     ALLOCATE ( TOMAS_DBIN( HcoState%MicroPhys%nBins ), STAT=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
-       MSG = 'Cannot allocate TOMAS_DBIN array (hcox_tomas_seasalt_mod.F90)'
-       CALL HCO_ERROR( MSG, RC )      
+       MSG = 'Cannot allocate TOMAS_DBIN array (hcox_tomas_jeagle_mod.F90)'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )      
        RETURN
     ENDIF
 
     ! Allocate TOMAS_A
-    ALLOCATE ( TOMAS_A( HcoState%MicroPhys%nBins ), STAT=RC )
+    ALLOCATE ( DRFAC( HcoState%MicroPhys%nBins ), STAT=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
-       MSG = 'Cannot allocate TOMAS_A array (hcox_tomas_seasalt_mod.F90)'
-       CALL HCO_ERROR( MSG, RC )
+       MSG = 'Cannot allocate DRFAC array (hcox_tomas_jeagle_mod.F90)'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ENDIF
 
@@ -375,8 +422,8 @@ CONTAINS
     ALLOCATE ( TC1( HcoState%NX, HcoState%NY,& 
            HcoState%NZ, HcoState%MicroPhys%nBins ), STAT=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
-       MSG = 'Cannot allocate TC1 array (hcox_tomas_seasalt_mod.F90)'
-       CALL HCO_ERROR( MSG, RC )
+       MSG = 'Cannot allocate TC1 array (hcox_tomas_jeagle_mod.F90)'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ELSE
  TC1 = 0d0
@@ -386,13 +433,16 @@ CONTAINS
     ALLOCATE ( TC2( HcoState%NX, HcoState%NY,& 
            HcoState%NZ, HcoState%MicroPhys%nBins ), STAT=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
-       MSG = 'Cannot allocate TC2 array (hcox_tomas_seasalt_mod.F90)'
-       CALL HCO_ERROR( MSG, RC )
+       MSG = 'Cannot allocate TC2 array (hcox_tomas_jeagle_mod.F90)'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
        RETURN
     ELSE
  TC2 = 0d0
     ENDIF
 
+! ----- IMPORTANT BINS ONLY CORRECTLY SET UP FOR TOMAS 15 PLEASE ADJUST OTHERS -jkodros (7/21/15)
+! ----  6/24/16 - JKodros - I have updated the DRFAC. They should (hopefully) be
+! ----  correct now. DRFAC is the bin width (radius not diameter) for DRY SS
 #if defined( TOMAS12 ) 
 
     !-----------------------------------------------------------------------
@@ -404,26 +454,25 @@ CONTAINS
           6.15187d-08,   9.76549d-08,    1.55017d-07,    2.46075d-07,   &
           3.90620d-07,   6.20070d-07,    9.84300d-07,    3.12500d-06  /)
 
-    TOMAS_A   = (/                                                      &
-        4607513.229d0, 9309031.200d0, 12961629.010d0, 13602132.943d0,   & 
-       11441451.509d0, 9387934.311d0,  8559624.313d0,  7165322.549d0,   &
-        4648135.263d0, 2447035.933d0,  3885009.997d0,  1006980.679d0  /)
-
+    DRFAC     = (/                                                      &
+       	  2.84132d-03,   4.51031d-03,    7.15968d-03,    1.13653d-02,   &
+          1.80413d-02,   2.86387d-02,    4.54612d-02,    7.21651d-02,   &
+          1.14555d-01,   1.81845d-01,    1.06874d+00,    3.39304d+00 /)
 #elif defined( TOMAS15 )
 
     !-----------------------------------------------------------------------
     ! TOMAS simulation w/ 15 size-resolved bins
     !-----------------------------------------------------------------------
 
-    TOMAS_DBIN = (/              0d0,            0d0,            0d0,  &
-          9.68859d-09,   1.53797d-08,    2.44137d-08,    3.87544d-08,  &
-          6.15187d-08,   9.76549d-08,    1.55017d-07,    2.46075d-07,  &
-          3.90620d-07,   6.20070d-07,    9.84300d-07,    3.12500d-06 /)
+    TOMAS_DBIN = (/              0d0,            0d0,            0d0,   &
+          1.22069d-08,   1.93772d-08,    3.07594d-08,    4.88274d-08,   &
+          7.75087d-08,   1.23037d-07,    1.95310d-07,    3.10035d-07,   &
+          4.92150d-07,   7.81239d-07,    1.74054d-06,    5.52588d-06 /)
 
-    TOMAS_A    = (/              0d0,            0d0,            0d0,  & 
-        4607513.229d0, 9309031.200d0, 12961629.010d0, 13602132.943d0,  & 
-       11441451.509d0, 9387934.311d0,  8559624.313d0,  7165322.549d0,  &
-        4648135.263d0, 2447035.933d0,  3885009.997d0,  1006980.679d0 /)
+    DRFAC      = (/              0d0,            0d0,            0d0,   & 
+          2.84132d-03,   4.51031d-03,    7.15968d-03,	 1.13653d-02,   &
+	  1.80413d-02,   2.86387d-02,    4.54612d-02,    7.21651d-02,   &
+	  1.14555d-01,   1.81845d-01,    1.06874d+00,    3.39304d+00 /)
 
 #elif defined( TOMAS40 )
 
@@ -441,17 +490,15 @@ CONTAINS
        9.84300d-07, 1.24014d-06, 1.56248d-06, 1.96860d-06, 2.48028d-06,  &
        3.12496d-06, 3.93720d-06, 4.96056d-06, 6.24991d-06, 7.87440d-06 /)
 
-    TOMAS_A    = (/                                                          &
-  0.0d0        , 0.0d0        , 0.0d0        , 0.0d0       ,  0.0d0   ,      &
-  0.0d0        , 0.0d0        , 0.0d0        , 0.0d0       ,  0.0d0   ,      &
-  1719793.975d0, 2887719.254d0, 4086059.079d0, 5222972.121d0, 6172287.155d0, &
-  6789341.855d0, 6954290.435d0, 6647842.508d0, 6030292.470d0, 5411159.039d0, &
-  4920485.633d0, 4467448.678d0, 4379031.834d0, 4180592.479d0, 3836983.331d0, &
-  3328339.218d0, 2675909.440d0, 1972225.823d0, 1384692.112d0, 1062343.821d0, &
-  913194.1118d0, 859176.8257d0, 812688.4300d0, 719215.3301d0, 580735.2991d0, &
-  418247.5535d0, 273217.6572d0, 183340.5653d0, 132174.9032d0,      0.0000d0/) 
-
-
+    DRFAC     = (/                                                       &
+       0.0d0      , 0.0d0      , 0.0d0      , 0.0d0      , 0.0d0      ,  &
+       0.0d0      , 0.0d0      , 0.0d0      , 0.0d0      , 0.0d0      ,  &
+       1.24737d-03, 1.57158d-03, 1.98007d-03, 2.49473d-03, 3.14317d-03,  &
+       3.96014d-03, 4.98947d-03, 6.28633d-03, 7.92028d-03, 9.97893d-03,  &
+       1.25727d-02, 1.58406d-02, 1.99579d-02, 2.51453d-02, 3.16811d-02,  &
+       3.99157d-02, 5.02906d-02, 6.33623d-02, 7.98314d-02, 1.00581d-01,  &
+       1.26725d-01, 1.59663d-01, 2.01163d-01, 2.53449d-01, 3.19326d-01,  &
+       4.02325d-01, 5.06898d-01, 6.38652d-01, 8.04651d-01, 1.01380d+00 /)
 #else
 
     !-----------------------------------------------------------------------
@@ -466,14 +513,13 @@ CONTAINS
        9.84300d-07, 1.24014d-06, 1.56248d-06, 1.96860d-06, 2.48028d-06,  &
        3.12496d-06, 3.93720d-06, 4.96056d-06, 6.24991d-06, 7.87440d-06 /)
 
-    TOMAS_A    = (/                                                          &
-  1719793.975d0, 2887719.254d0, 4086059.079d0, 5222972.121d0, 6172287.155d0, &
-  6789341.855d0, 6954290.435d0, 6647842.508d0, 6030292.470d0, 5411159.039d0, &
-  4920485.633d0, 4467448.678d0, 4379031.834d0, 4180592.479d0, 3836983.331d0, &
-  3328339.218d0, 2675909.440d0, 1972225.823d0, 1384692.112d0, 1062343.821d0, &
-  913194.1118d0, 859176.8257d0, 812688.4300d0, 719215.3301d0, 580735.2991d0, &
-  418247.5535d0, 273217.6572d0, 183340.5653d0, 132174.9032d0,      0.0000d0/) 
-
+    DRFAC     = (/                                                       &
+       1.24737d-03, 1.57158d-03, 1.98007d-03, 2.49473d-03, 3.14317d-03,	 &
+       3.96014d-03, 4.98947d-03, 6.28633d-03, 7.92028d-03, 9.97893d-03,  &
+       1.25727d-02, 1.58406d-02, 1.99579d-02, 2.51453d-02, 3.16811d-02,  &
+       3.99157d-02, 5.02906d-02, 6.33623d-02, 7.98314d-02, 1.00581d-01,	 &
+       1.26725d-01, 1.59663d-01, 2.01163d-01, 2.53449d-01, 3.19326d-01,  &
+       4.02325d-01, 5.06898d-01, 6.38652d-01, 8.04651d-01, 1.01380d+00 /)
 #endif
 
     !=======================================================================
@@ -507,8 +553,8 @@ CONTAINS
     TOMAS_COEF = 0.77d0
 
 #else
-    MSG = 'Adjust TOMAS_SeaSalt emiss coeff (TOMAS_COEF) for your model res: SRCSALT30: hcox_TOMAS_SeaSalt_mod.F90'
-      call HCO_ERROR( MSG, RC )
+    MSG = 'Adjust TOMAS_Jeagle emiss coeff (TOMAS_COEF) for your model res: SRCSALT30: hcox_TOMAS_jeagle_mod.F90'
+      call HCO_ERROR(HcoState%Config%Err,MSG, RC )
 #endif
 
     !=======================================================================
@@ -526,30 +572,30 @@ CONTAINS
 
 !    print*, 'ENABLE MODULE'
     ! Enable module
-    ExtState%TOMAS_SeaSalt     = .TRUE.
+    ExtState%TOMAS_Jeagle     = .TRUE.
     
 
     ! Return w/ success
 !    IF ( ALLOCATED( HcoIDs   ) ) DEALLOCATE( HcoIDs   )
     IF ( ALLOCATED( SpcNames ) ) DEALLOCATE( SpcNames )
-    CALL HCO_LEAVE ( RC ) 
+    CALL HCO_LEAVE( HcoState%Config%Err, RC ) 
  
-  END SUBROUTINE HCOX_TOMAS_SeaSalt_Init
+  END SUBROUTINE HCOX_TOMAS_Jeagle_Init
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOX_TOMAS_SeaSalt_Final 
+! !IROUTINE: HCOX_TOMAS_Jeagle_Final 
 !
-! !DESCRIPTION: Subroutine HcoX\_TOMAS\_SeaSalt\_Final deallocates 
+! !DESCRIPTION: Subroutine HcoX\_TOMAS\_Jeagle\_Final deallocates 
 !  all module arrays.
 !\\
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCOX_TOMAS_SeaSalt_Final
+  SUBROUTINE HCOX_TOMAS_Jeagle_Final
 !
 ! !REVISION HISTORY:
 !  15 Dec 2013 - C. Keller   - Initial version
@@ -559,15 +605,15 @@ CONTAINS
 !BOC
 !
     !=================================================================
-    ! HCOX_TOMAS_SeaSalt_Final begins here!
+    ! HCOX_TOMAS_Jeagle_Final begins here!
     !=================================================================
     IF ( ALLOCATED( TOMAS_DBIN ) ) DEALLOCATE( TOMAS_DBIN )
-    IF ( ALLOCATED( TOMAS_A    ) ) DEALLOCATE( TOMAS_A    )
+    IF ( ALLOCATED( DRFAC      ) ) DEALLOCATE( DRFAC      )
     IF ( ALLOCATED( HcoIDs     ) ) DEALLOCATE( HcoIDs     )
     IF ( ALLOCATED( TC1        ) ) DEALLOCATE( TC1        )
     IF ( ALLOCATED( TC2        ) ) DEALLOCATE( TC2        )
 
-  END SUBROUTINE HCOX_TOMAS_SeaSalt_Final
+  END SUBROUTINE HCOX_TOMAS_Jeagle_Final
 !EOC
-END MODULE HCOX_TOMAS_SeaSalt_Mod
+END MODULE HCOX_TOMAS_Jeagle_Mod
 #endif
