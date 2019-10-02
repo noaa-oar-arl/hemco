@@ -3,11 +3,11 @@
 !------------------------------------------------------------------------------
 !BOP
 !
-! !MODULE: hcox_driver_mod.F90 
+! !MODULE: hcox_driver_mod.F90
 !
-! !DESCRIPTION: Module hcox\_driver\_mod.F90 contains the driver routines 
-! (INIT, RUN, FINAL) for the HEMCO extensions. It determines the extensions 
-! to be used (based on the settings specified in the configuration file) 
+! !DESCRIPTION: Module hcox\_driver\_mod.F90 contains the driver routines
+! (INIT, RUN, FINAL) for the HEMCO extensions. It determines the extensions
+! to be used (based on the settings specified in the configuration file)
 ! and invokes the respective extension module calls.
 !\\
 !\\
@@ -23,7 +23,7 @@ MODULE HCOX_Driver_Mod
 !
   USE HCO_Error_Mod
   USE HCO_State_Mod,  ONLY : HCO_State
-  USE HCOX_State_Mod, ONLY : Ext_State 
+  USE HCOX_State_Mod, ONLY : Ext_State
 
   IMPLICIT NONE
   PRIVATE
@@ -37,16 +37,16 @@ MODULE HCOX_Driver_Mod
   PRIVATE :: HCOX_DiagnDefine
   PRIVATE :: HCOX_DiagnFill
 !
-! !REMARKS: 
-! (1) The extension option objects (e.g. meteorological variables) are 
-!     defined in the HEMCO - model interface module and passed to this 
-!     module. 
-! (2) To add/remove HEMCO extensions from a model application, just 
-!     add/remove the corresponding initialize, run, and finalize calls 
+! !REMARKS:
+! (1) The extension option objects (e.g. meteorological variables) are
+!     defined in the HEMCO - model interface module and passed to this
+!     module.
+! (2) To add/remove HEMCO extensions from a model application, just
+!     add/remove the corresponding initialize, run, and finalize calls
 !     in the respective driver routines!
 !
 ! !REVISION HISTORY:
-!  15 Dec 2013 - C. Keller   - Initial version 
+!  15 Dec 2013 - C. Keller   - Initial version
 !  01 Jul 2014 - R. Yantosca - Cosmetic changes in ProTeX headers
 !  01 Jul 2014 - R. Yantosca - Now use F90 free-format indentation
 !EOP
@@ -86,8 +86,8 @@ CONTAINS
 !
 ! !IROUTINE: HCOX_Init
 !
-! !DESCRIPTION: Subroutine HCOX\_Init is the driver routine to initialize 
-!  all enabled HEMCO extensions. 
+! !DESCRIPTION: Subroutine HCOX\_Init is the driver routine to initialize
+!  all enabled HEMCO extensions.
 !\\
 ! !INTERFACE:
 !
@@ -102,6 +102,7 @@ CONTAINS
     USE HCOX_LightNox_Mod,      ONLY : HCOX_LightNox_Init
     USE HCOX_SoilNox_Mod,       ONLY : HCOX_SoilNox_Init
     USE HCOX_DustDead_Mod,      ONLY : HCOX_DustDead_Init
+    USE HCOX_DustFengsha_Mod,      ONLY : HCOX_DustFenghsa_Init
     USE HCOX_DustGinoux_Mod,    ONLY : HCOX_DustGinoux_Init
     USE HCOX_SeaSalt_Mod,       ONLY : HCOX_SeaSalt_Init
     USE HCOX_GFED_Mod,          ONLY : HCOX_GFED_Init
@@ -113,7 +114,7 @@ CONTAINS
     USE HCOX_AeroCom_Mod,       ONLY : HCOX_AeroCom_Init
 #if defined( TOMAS )
     USE HCOX_TOMAS_Jeagle_Mod,   ONLY : HCOX_TOMAS_Jeagle_Init
-    USE HCOX_TOMAS_DustDead_Mod, ONLY : HCOX_TOMAS_DustDead_Init  
+    USE HCOX_TOMAS_DustDead_Mod, ONLY : HCOX_TOMAS_DustDead_Init
 #endif
 !
 ! !INPUT PARAMETERS:
@@ -122,8 +123,8 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState       ! HEMCO state object 
-    TYPE(Ext_State),  POINTER        :: ExtState       ! HEMCO extension object 
+    TYPE(HCO_State),  POINTER        :: HcoState       ! HEMCO state object
+    TYPE(Ext_State),  POINTER        :: ExtState       ! HEMCO extension object
     INTEGER,          INTENT(INOUT)  :: RC             ! Failure or success
 !
 ! !REMARKS:
@@ -132,11 +133,11 @@ CONTAINS
 !  from a higher-level routine.  For example, this allows us to pass
 !  via ExtState additional scalar quantities from the driving model to
 !  HEMCO.  To do this, you will need to (1) call ExtStateInit separately,
-!  and (2) set the optional argument NoExtStateInit=.FALSE. flag in the 
+!  and (2) set the optional argument NoExtStateInit=.FALSE. flag in the
 !  call to HCOX_INIT.
 !
-! !REVISION HISTORY: 
-!  12 Sep 2013 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  12 Sep 2013 - C. Keller   - Initial version
 !  07 Jul 2014 - R. Yantosca - Now init GEOS-Chem Rn-Pb-Be emissions module
 !  20 Aug 2014 - M. Sulprizio- Now init GEOS-Chem POPs emissions module
 !  01 Oct 2014 - R. Yantosca - Now init TOMAS sea salt emissions module
@@ -153,18 +154,18 @@ CONTAINS
     ! HCOX_INIT begins here!
     !=======================================================================
 
-    ! Error handling 
+    ! Error handling
     CALL HCO_ENTER(HcoState%Config%Err,'HCOX_INIT (hcox_driver_mod.F90)', RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     !=======================================================================
-    ! Initialize extensions 
+    ! Initialize extensions
     !=======================================================================
     CALL ExtStateInit( ExtState, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! Custom 
+    ! Custom
     !-----------------------------------------------------------------------
     CALL HCOX_Custom_Init( amIRoot, HcoState, 'Custom', ExtState, RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
@@ -173,102 +174,108 @@ CONTAINS
     ! SeaFlux
     !-----------------------------------------------------------------------
     CALL HCOX_SeaFlux_Init( amIRoot, HcoState, 'SeaFlux', ExtState, RC )
-    IF ( RC /= HCO_SUCCESS) RETURN 
+    IF ( RC /= HCO_SUCCESS) RETURN
 
     !-----------------------------------------------------------------------
     ! ParaNox
     !-----------------------------------------------------------------------
     CALL HCOX_PARANOX_INIT( amIRoot, HcoState, 'ParaNOx', ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! LightNox 
+    ! LightNox
     !-----------------------------------------------------------------------
     CALL HCOX_LightNox_Init( amIRoot,  HcoState, 'LightNOx', ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! SoilNox 
+    ! SoilNox
     !-----------------------------------------------------------------------
     CALL HCOX_SoilNox_Init( amIRoot, HcoState, 'SoilNOx', ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! Dust emissions (DEAD model) 
+    ! Dust emissions (DEAD model)
     !-----------------------------------------------------------------------
     CALL HCOX_DustDead_Init( amIRoot, HcoState, 'DustDead', ExtState,  RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 #if defined( TOMAS )
     CALL HCOX_TOMAS_DustDead_Init( amIRoot, HcoState, 'TOMAS_DustDead', &
-    	 		     	      ExtState,  RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
-#endif 
+                                      ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+#endif
     !-----------------------------------------------------------------------
-    ! Dust Ginoux emissions 
+    ! Dust Fengsha emissions
+    !-----------------------------------------------------------------------
+    CALL HCOX_DustFengsha_Init( amIRoot,  HcoState, 'DustFengsha',  &
+                                         ExtState,  RC           )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    !-----------------------------------------------------------------------
+    ! Dust Ginoux emissions
     !-----------------------------------------------------------------------
     CALL HCOX_DustGinoux_Init( amIRoot,  HcoState, 'DustGinoux',  &
                                          ExtState,  RC           )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! SeaSalt aerosol extension
     !-----------------------------------------------------------------------
     CALL HCOX_SeaSalt_Init( amIRoot, HcoState, 'SeaSalt', ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! MEGAN extension
     !-----------------------------------------------------------------------
-    CALL HCOX_Megan_Init( amIRoot, HcoState, 'MEGAN', ExtState, RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    CALL HCOX_Megan_Init( amIRoot, HcoState, 'MEGAN', ExtState, RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! GFED extension
     !-----------------------------------------------------------------------
-    CALL HCOX_GFED_Init( amIRoot, HcoState, 'GFED', ExtState, RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    CALL HCOX_GFED_Init( amIRoot, HcoState, 'GFED', ExtState, RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! FINN biomass burning emissions
     !-----------------------------------------------------------------------
-    CALL HcoX_FINN_Init( amIRoot, HcoState, 'FINN', ExtState, RC ) 
-    IF( RC /= HCO_SUCCESS ) RETURN 
+    CALL HcoX_FINN_Init( amIRoot, HcoState, 'FINN', ExtState, RC )
+    IF( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! Extension for GEOS-Chem Rn-Pb-Be specialty simulation
     !-----------------------------------------------------------------------
     CALL HCOX_GC_RnPbBe_Init( amIRoot, HcoState, 'GC_Rn-Pb-Be', &
-                                       ExtState,  RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+                                       ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
     ! Extension for GEOS-Chem POPs specialty simulation
     !-----------------------------------------------------------------------
     CALL HCOX_GC_POPs_Init( amIRoot, HcoState, 'GC_POPs', &
-                                     ExtState,  RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+                                     ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! CH4 wetland emissions 
+    ! CH4 wetland emissions
     !-----------------------------------------------------------------------
     CALL HCOX_CH4Wetland_Init( amIRoot,  HcoState, 'CH4_WETLANDS', &
-                                         ExtState,  RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+                                         ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !-----------------------------------------------------------------------
-    ! AeroCom volcano emissions 
+    ! AeroCom volcano emissions
     !-----------------------------------------------------------------------
     CALL HCOX_AeroCom_Init( amIRoot,  HcoState, 'AeroCom_Volcano', &
-                            ExtState,  RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+                            ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
 #if defined( TOMAS )
     !-----------------------------------------------------------------------
     ! TOMAS sectional sea salt aerosol emissions
     !-----------------------------------------------------------------------
     CALL HCOX_TOMAS_Jeagle_Init( amIRoot, HcoState, 'TOMAS_Jeagle',  &
-                                          ExtState,  RC ) 
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+                                          ExtState,  RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
 #endif
 
     !-----------------------------------------------------------------------
@@ -276,7 +283,7 @@ CONTAINS
     !-----------------------------------------------------------------------
 
     !=======================================================================
-    ! Sanity checks 
+    ! Sanity checks
     !=======================================================================
 
     ! Cannot have both DustDead and DustGinoux turned on!
@@ -286,11 +293,25 @@ CONTAINS
        RETURN
     ENDIF
 
+    !cannot have both dustdead and dustfengsha turned on!
+    IF ( ExtState%DustDead > 0 .AND. ExtState%DustFengsha ) THEN
+       MSG = 'Fengsha and DEAD dust emissions switched on!'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
+       RETURN
+    ENDIF
+
+    !cannot have both dustginoux and dustfengsha turned on!
+    IF ( ExtState%DustGinoux > 0 .AND. ExtState%DustFengsha ) THEN
+       MSG = 'Ginoux and Fengsha dust emissions switched on!'
+       CALL HCO_ERROR(HcoState%Config%Err,MSG, RC )
+       RETURN
+    ENDIF
+
     !=======================================================================
-    ! Define diagnostics 
+    ! Define diagnostics
     !=======================================================================
     CALL HCOX_DiagnDefine( amIRoot, HcoState, ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !=======================================================================
     ! Leave w/ success
@@ -308,7 +329,7 @@ CONTAINS
 !
 ! !DESCRIPTION: Subroutine HCOX\_Run is the driver routine to run the HEMCO
 ! extensions. All enabled emission extensions are executed, and the
-! emissions calculated therein become added to the respective flux arrays 
+! emissions calculated therein become added to the respective flux arrays
 ! in HcoState.\\
 !\\
 !\\
@@ -320,16 +341,17 @@ CONTAINS
 !
     USE HCO_Clock_Mod,          ONLY : HcoClock_Get
     USE HCOX_Custom_Mod,        ONLY : HCOX_Custom_Run
-    USE HCOX_SeaFlux_Mod,       ONLY : HCOX_SeaFlux_Run 
-    USE HCOX_ParaNox_Mod,       ONLY : HCOX_ParaNox_Run 
-    USE HCOX_LightNox_Mod,      ONLY : HCOX_LightNox_Run 
-    USE HCOX_SoilNox_Mod,       ONLY : HCOX_SoilNox_Run 
-    USE HCOX_DustDead_Mod,      ONLY : HCOX_DustDead_Run 
-    USE HCOX_DustGinoux_Mod,    ONLY : HCOX_DustGinoux_Run 
-    USE HCOX_SeaSalt_Mod,       ONLY : HCOX_SeaSalt_Run 
-    USE HCOX_Megan_Mod,         ONLY : HCOX_Megan_Run 
-    USE HCOX_GFED_Mod,          ONLY : HCOX_GFED_Run 
-    USE HcoX_FINN_Mod,          ONLY : HcoX_FINN_Run 
+    USE HCOX_SeaFlux_Mod,       ONLY : HCOX_SeaFlux_Run
+    USE HCOX_ParaNox_Mod,       ONLY : HCOX_ParaNox_Run
+    USE HCOX_LightNox_Mod,      ONLY : HCOX_LightNox_Run
+    USE HCOX_SoilNox_Mod,       ONLY : HCOX_SoilNox_Run
+    USE HCOX_DustDead_Mod,      ONLY : HCOX_DustDead_Run
+    USE HCOX_DustFengsha_Mod,   ONLY : HCOX_DustFengsha_Run
+    USE HCOX_DustGinoux_Mod,    ONLY : HCOX_DustGinoux_Run
+    USE HCOX_SeaSalt_Mod,       ONLY : HCOX_SeaSalt_Run
+    USE HCOX_Megan_Mod,         ONLY : HCOX_Megan_Run
+    USE HCOX_GFED_Mod,          ONLY : HCOX_GFED_Run
+    USE HcoX_FINN_Mod,          ONLY : HcoX_FINN_Run
     USE HCOX_GC_RnPbBe_Mod,     ONLY : HCOX_GC_RnPbBe_Run
     USE HCOX_GC_POPs_Mod,       ONLY : HCOX_GC_POPs_Run
     USE HCOX_CH4WetLand_mod,    ONLY : HCOX_CH4Wetland_Run
@@ -345,18 +367,18 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object 
-    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object 
+    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object
+    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object
     INTEGER,          INTENT(INOUT)  :: RC         ! Failure or success
 !
 ! !NOTE:
 !
-! The ExtState object contains all extension option objects. In particular, 
+! The ExtState object contains all extension option objects. In particular,
 ! it contains the pointers to all met fields used by the extensions. These
 ! pointers have to be set in the HEMCO-model interface module beforehand!
 !
-! !REVISION HISTORY: 
-!  15 Dec 2013 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  15 Dec 2013 - C. Keller   - Initial version
 !  07 Jul 2014 - R. Yantosca - Now Run GEOS-Chem Rn-Pb-Be emissions module
 !  20 Aug 2014 - M. Sulprizio- Now run GEOS-Chem POPs emissions module
 !  01 Oct 2014 - R. Yantosca - Now run TOMAS sea salt emissions module
@@ -389,11 +411,11 @@ CONTAINS
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! Customized emissions 
+    ! Customized emissions
     !-----------------------------------------------------------------------
     IF ( ExtState%Custom ) THEN
        CALL HCOX_Custom_Run( amIRoot, ExtState, HcoState, RC)
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -401,55 +423,63 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF ( ExtState%SeaFlux) THEN
        CALL HCOX_SeaFlux_Run( amIRoot, ExtState, HcoState, RC)
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! ParaNox (Ship NO emissions) 
+    ! ParaNox (Ship NO emissions)
     !-----------------------------------------------------------------------
     IF (ExtState%ParaNOx ) THEN
        CALL HCOX_ParaNox_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! Lightning NOx  
+    ! Lightning NOx
     !-----------------------------------------------------------------------
     IF ( ExtState%LightNOx > 0 ) THEN
        CALL HCOX_LightNox_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! SoilNOx  
+    ! SoilNOx
     !-----------------------------------------------------------------------
     IF ( ExtState%SoilNOx > 0 ) THEN
        CALL HCOX_SoilNox_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! Dust emissions (DEAD model) 
+    ! Dust emissions (DEAD model)
     !-----------------------------------------------------------------------
     IF ( ExtState%DustDead > 0 ) THEN
        CALL HCOX_DustDead_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
 #if defined( TOMAS )
     IF ( ExtState%TOMAS_DustDead ) THEN
        !print*, 'JACK TOMAS_DustDead is on'
        CALL HCOX_TOMAS_DustDead_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
-#endif 
+#endif
+
+    !-----------------------------------------------------------------------
+    ! Dust emissions (Fengsha)
+    !-----------------------------------------------------------------------
+    IF ( ExtState%DustFengsha ) THEN
+       CALL HCOX_DustFengsha_Run( amIRoot, ExtState, HcoState, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
+    ENDIF
 
     !-----------------------------------------------------------------------
     ! Dust emissions (Ginoux)
     !-----------------------------------------------------------------------
     IF ( ExtState%DustGinoux ) THEN
        CALL HCOX_DustGinoux_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -457,31 +487,31 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF ( ExtState%SeaSalt ) THEN
        CALL HCOX_SeaSalt_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! MEGAN biogenic emissions 
+    ! MEGAN biogenic emissions
     !-----------------------------------------------------------------------
     IF ( ExtState%Megan > 0 ) THEN
        CALL HCOX_Megan_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! GFED biomass burning emissions 
+    ! GFED biomass burning emissions
     !-----------------------------------------------------------------------
     IF ( ExtState%GFED ) THEN
        CALL HCOX_GFED_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! FINN biomass burning emissions 
+    ! FINN biomass burning emissions
     ! ----------------------------------------------------------------------
     IF ( ExtState%FINN ) THEN
        CALL HcoX_FINN_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -489,7 +519,7 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF ( ExtState%GC_RnPbBe ) THEN
        CALL HCOX_GC_RnPbBe_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -497,15 +527,15 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF ( ExtState%GC_POPs ) THEN
        CALL HCOX_GC_POPs_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
-    ! CH4 wetland emissions 
+    ! CH4 wetland emissions
     !-----------------------------------------------------------------------
     IF ( ExtState%Wetland_CH4 > 0 ) THEN
        CALL HCOX_CH4Wetland_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------------
@@ -514,16 +544,16 @@ CONTAINS
 #if defined( TOMAS )
     IF ( ExtState%TOMAS_Jeagle ) THEN
        CALL HCOX_TOMAS_Jeagle_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 #endif
 
     !-----------------------------------------------------------------------
-    ! AeroCom volcano emissions 
+    ! AeroCom volcano emissions
     !-----------------------------------------------------------------------
     IF ( ExtState%AeroCom > 0 ) THEN
        CALL HCOX_AeroCom_Run( amIRoot, ExtState, HcoState, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN 
+       IF ( RC /= HCO_SUCCESS ) RETURN
     ENDIF
 
     !-----------------------------------------------------------------
@@ -532,15 +562,15 @@ CONTAINS
 
     !=======================================================================
     ! Fill diagnostics
-    ! This updates the diagnostics defined in HCOX_DiagnDefine. Subroutine 
+    ! This updates the diagnostics defined in HCOX_DiagnDefine. Subroutine
     ! HCOIO_DIAGN_WRITEOUT can be used to write out diagnostics to disk.
-    ! This subroutine is called in higher-level routines. 
+    ! This subroutine is called in higher-level routines.
     !=======================================================================
     CALL HCOX_DiagnFill( amIRoot, HcoState, ExtState, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN 
+    IF ( RC /= HCO_SUCCESS ) RETURN
 
     !=======================================================================
-    ! Return w/ success 
+    ! Return w/ success
     !=======================================================================
     CALL HCO_LEAVE( HcoState%Config%Err,RC )
 
@@ -553,7 +583,7 @@ CONTAINS
 !
 ! !IROUTINE: HCOX_Final
 !
-! !DESCRIPTION: Subroutine HCOX\_Final finalizes all HEMCO extensions. 
+! !DESCRIPTION: Subroutine HCOX\_Final finalizes all HEMCO extensions.
 !\\
 !\\
 ! !INTERFACE:
@@ -569,6 +599,7 @@ CONTAINS
     USE HCOX_LightNox_Mod,      ONLY : HCOX_LightNox_Final
     USE HCOX_SoilNox_Mod,       ONLY : HCOX_SoilNox_Final
     USE HCOX_DustDead_Mod,      ONLY : HCOX_DustDead_Final
+    USE HCOX_DustFengsha_Mod,      ONLY : HCOX_DustFengsha_Final
     USE HCOX_DustGinoux_Mod,    ONLY : HCOX_DustGinoux_Final
     USE HCOX_SeaSalt_Mod,       ONLY : HCOX_SeaSalt_Final
     USE HCOX_MEGAN_Mod,         ONLY : HCOX_MEGAN_Final
@@ -589,12 +620,12 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object 
-    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object 
+    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object
+    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object
     INTEGER,          INTENT(INOUT)  :: RC         ! Failure or success
 !
-! !REVISION HISTORY: 
-!  12 Sep 2013 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  12 Sep 2013 - C. Keller   - Initial version
 !  07 Jul 2014 - R. Yantosca - Now finalize GEOS-Chem Rn-Pb-Be emissions pkg
 !  20 Aug 2014 - M. Sulprizio- Now finalize GEOS-Chen POPs emissions module
 !  01 Oct 2014 - R. Yantosca - Now finalize TOMAS sea salt emissions module
@@ -612,10 +643,10 @@ CONTAINS
     ! HCOX_FINAL begins here!
     !=======================================================================
 
-    IF ( ASSOCIATED( ExtState ) ) THEN 
+    IF ( ASSOCIATED( ExtState ) ) THEN
 
        ! Nullify all ExtState object pointers
-       CALL ExtStateFinal( ExtState ) 
+       CALL ExtStateFinal( ExtState )
 
        ! Call individual cleanup routines
        IF ( ExtState%Custom        ) CALL HCOX_Custom_Final()
@@ -626,6 +657,7 @@ CONTAINS
 #if defined( TOMAS)
        IF ( ExtState%TOMAS_DustDead )  CALL HCOX_TOMAS_DustDead_Final(ExtState)
 #endif
+       IF ( ExtState%DustFengsha    ) CALL HCOX_DustFengsha_Final()
        IF ( ExtState%DustGinoux    ) CALL HCOX_DustGinoux_Final()
        IF ( ExtState%SeaSalt       ) CALL HCOX_SeaSalt_Final()
        IF ( ExtState%Megan  > 0    ) CALL HCOX_Megan_Final(am_I_Root,HcoState,ExtState,RC)
@@ -638,7 +670,7 @@ CONTAINS
        IF ( ExtState%AeroCom > 0   ) CALL HCOX_AeroCom_Final( ExtState )
 #if defined( TOMAS )
        IF ( ExtState%TOMAS_Jeagle  ) CALL HCOX_TOMAS_Jeagle_Final()
-#endif       
+#endif
 
        ! Deallocate ExtState object
        DEALLOCATE( ExtState )
@@ -664,7 +696,7 @@ CONTAINS
 
     ! Return w/ success
     RC = HCO_SUCCESS
- 
+
   END SUBROUTINE HCOX_Final
 !EOC
 !------------------------------------------------------------------------------
@@ -674,7 +706,7 @@ CONTAINS
 !
 ! !IROUTINE: HCOX_DiagnDefine
 !
-! !DESCRIPTION: Subroutine HCOX\_DiagnDefine creates custom-defined diagnostics. 
+! !DESCRIPTION: Subroutine HCOX\_DiagnDefine creates custom-defined diagnostics.
 !  This is very preliminary and for testing only.
 !\\
 !\\
@@ -691,12 +723,12 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object 
-    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object 
+    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object
+    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object
     INTEGER,          INTENT(INOUT)  :: RC         ! Failure or success
 !
-! !REVISION HISTORY: 
-!  19 Feb 2015 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  19 Feb 2015 - C. Keller   - Initial version
 !EOP
 !------------------------------------------------------------------------------
 !
@@ -769,51 +801,51 @@ CONTAINS
        DGN_DRYTOTN = 0.0_sp
        DGN_WETTOTN = 0.0_sp
 
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_T2M', DGN_T2M, RC ) 
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_T2M', DGN_T2M, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
 !
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_GWET', DGN_GWET, RC ) 
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_GWET', DGN_GWET, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
 !
-       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_LAI', DGN_LAI, RC ) 
+       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_LAI', DGN_LAI, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
-   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_U10M', DGN_U10M, RC ) 
+
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_U10M', DGN_U10M, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_V10M', DGN_V10M, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_V10M', DGN_V10M, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_PARDR', DGN_PARDR, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_PARDR', DGN_PARDR, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_PARDF', DGN_PARDF, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_PARDF', DGN_PARDF, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_SZAFACT', DGN_SZAFACT, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_SZAFACT', DGN_SZAFACT, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_CLDFRC', DGN_CLDFRC, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_CLDFRC', DGN_CLDFRC, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_ALBD', DGN_ALBD, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_ALBD', DGN_ALBD, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_WLI', DGN_WLI, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_WLI', DGN_WLI, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
-!   
-!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_TROPP', DGN_TROPP, RC ) 
+!
+!       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_TROPP', DGN_TROPP, RC )
 !       IF ( RC /= HCO_SUCCESS ) RETURN
 
-       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_SUNCOS', DGN_SUNCOS, RC ) 
+       CALL DgnDefine ( am_I_Root, HcoState, 'HCO_SUNCOS', DGN_SUNCOS, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
-   
-       CALL DgnDefine ( am_I_Root, HcoState, 'DRY_TOTN', DGN_DRYTOTN, RC ) 
+
+       CALL DgnDefine ( am_I_Root, HcoState, 'DRY_TOTN', DGN_DRYTOTN, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
-   
-       CALL DgnDefine ( am_I_Root, HcoState, 'WET_TOTN', DGN_WETTOTN, RC ) 
+
+       CALL DgnDefine ( am_I_Root, HcoState, 'WET_TOTN', DGN_WETTOTN, RC )
        IF ( RC /= HCO_SUCCESS ) RETURN
-   
+
     ENDIF
 
     ! Return w/ success
@@ -828,16 +860,16 @@ CONTAINS
 !
 ! !IROUTINE: DgnDefine
 !
-! !DESCRIPTION: Helper routine to define a target diagnostics. 
+! !DESCRIPTION: Helper routine to define a target diagnostics.
 !\\
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE DgnDefine ( am_I_Root, HcoState, DgnName, Trgt2D, RC ) 
+  SUBROUTINE DgnDefine ( am_I_Root, HcoState, DgnName, Trgt2D, RC )
 !
 ! !USES:
 !
-    USE HCO_DIAGN_MOD, ONLY : Diagn_Create 
+    USE HCO_DIAGN_MOD, ONLY : Diagn_Create
 !
 ! !INPUT PARAMETERS:
 !
@@ -845,18 +877,18 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object 
+    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object
     CHARACTER(LEN=*), INTENT(IN   )  :: DgnName      ! diagnostics name
     REAL(sp),         INTENT(IN   )  :: Trgt2D(HcoState%NX,HcoState%NY)
     INTEGER,          INTENT(INOUT)  :: RC         ! Failure or success
 !
-! !REVISION HISTORY: 
-!  19 Feb 2015 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  19 Feb 2015 - C. Keller   - Initial version
 !EOP
 !------------------------------------------------------------------------------
 
     CALL Diagn_Create ( am_I_Root, &
-                        HcoState   = HcoState,          & 
+                        HcoState   = HcoState,          &
                         cName      = TRIM(DgnName),     &
                         ExtNr      = -1,                &
                         Cat        = -1,                &
@@ -873,7 +905,7 @@ CONTAINS
     ! Return w/ success
     RC = HCO_SUCCESS
 
-  END SUBROUTINE DgnDefine 
+  END SUBROUTINE DgnDefine
 !EOC
 !------------------------------------------------------------------------------
 !                  Harvard-NASA Emissions Component (HEMCO)                   !
@@ -882,7 +914,7 @@ CONTAINS
 !
 ! !IROUTINE: HCOX_DiagnFill
 !
-! !DESCRIPTION: Subroutine HCOX\_DiagnFill fills custom-defined diagnostics. 
+! !DESCRIPTION: Subroutine HCOX\_DiagnFill fills custom-defined diagnostics.
 !\\
 !\\
 ! !INTERFACE:
@@ -898,12 +930,12 @@ CONTAINS
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object 
-    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object 
+    TYPE(HCO_State),  POINTER        :: HcoState   ! HEMCO state object
+    TYPE(Ext_State),  POINTER        :: ExtState   ! Extension options object
     INTEGER,          INTENT(INOUT)  :: RC         ! Failure or success
 !
-! !REVISION HISTORY: 
-!  19 Feb 2015 - C. Keller   - Initial version 
+! !REVISION HISTORY:
+!  19 Feb 2015 - C. Keller   - Initial version
 !EOP
 !------------------------------------------------------------------------------
 
@@ -924,7 +956,7 @@ CONTAINS
        DGN_DRYTOTN = ExtState%DRY_TOTN%Arr%Val
        DGN_WETTOTN = ExtState%WET_TOTN%Arr%Val
     ENDIF
-   
+
     ! Return w/ success
     RC = HCO_SUCCESS
 

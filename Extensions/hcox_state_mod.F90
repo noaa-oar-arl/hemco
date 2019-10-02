@@ -99,6 +99,7 @@ MODULE HCOX_STATE_MOD
      !----------------------------------------------------------------------
      LOGICAL                   :: Custom         ! Customizable ext.
      INTEGER                   :: DustDead       ! DEAD dust model
+     LOGICAL                   :: DustFengsha    ! Fengsha Dust Model
      LOGICAL                   :: DustGinoux     ! Ginoux dust emissions
      LOGICAL                   :: DustAlk        ! Dust alkalinity
      INTEGER                   :: LightNOx       ! Lightning NOx
@@ -301,6 +302,7 @@ CONTAINS
     !-----------------------------------------------------------------------
     ExtState%Custom         = .FALSE.
     ExtState%DustDead       = -1
+    ExtState%DustFengsha     = .FALSE.
     ExtState%DustGinoux     = .FALSE.
     ExtState%DustAlk        = .FALSE.
     ExtState%LightNOx       = -1
