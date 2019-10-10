@@ -334,10 +334,10 @@ CONTAINS
              ! Read from the namelist
              !====================================================================
              stype = INT(SRCE_TYP(I,J))
-             if (stype .eq. 0) then
+             if (stype .lt. 1.) then
                 cycle
              end if
-             !call HcoX_DustFengsha_styp(clay,sand,silt, stype)
+!             call HcoX_DustFengsha_styp(clay,sand,silt, stype)
              call HcoX_DustFengsha_utst(stype,u_ts0)
 
              ! USTAR friction velocity from the model [m/s]
@@ -385,19 +385,19 @@ CONTAINS
 
              AREA_M2 = HcoState%Grid%AREA_M2%Val( I, J )
              SSM = SRCE_SSM(I,J)
-             DUST_EMI_TOTAL(I,J) = beta * Q * SSM**2 * rhoa / GRV_SFC * AREA_M2
+             DUST_EMI_TOTAL(I,J) = beta * Q * SSM**2 * rhoa / GRV_SFC
 
              ! Increment total dust emissions [kg/m2/s] (L. Zhang, 6/26/15)
              DO N=1, NBINS
                 SELECT CASE( N )
                 CASE( 1 )
-                   FLUX(I,J,N) =  stype ! DUST_EMI_TOTAL(I,J) * 0.0766d0
+                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.0766d0
                 CASE( 2 )
-                   FLUX(I,J,N) =  DUST_EMI_TOTAL(I,J) * 0.1924d0
+                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.1924d0
                 CASE( 3 )
-                   FLUX(I,J,N) =  DUST_EMI_TOTAL(I,J) * 0.3491d0
+                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.3491d0
                 CASE( 4 )
-                   FLUX(I,J,N) =  DUST_EMI_TOTAL(I,J) * 0.3819d0
+                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.3819d0
                 END SELECT
                 IF ( ExtNrAlk > 0 ) THEN
                    FLUX_ALK(I,J,N) = 0.04 * FLUX(I,J,N)
