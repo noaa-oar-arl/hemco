@@ -102,7 +102,7 @@ CONTAINS
     USE HCOX_LightNox_Mod,      ONLY : HCOX_LightNox_Init
     USE HCOX_SoilNox_Mod,       ONLY : HCOX_SoilNox_Init
     USE HCOX_DustDead_Mod,      ONLY : HCOX_DustDead_Init
-    USE HCOX_DustFengsha_Mod,      ONLY : HCOX_DustFenghsa_Init
+    USE HCOX_DustFengsha_Mod,   ONLY : HCOX_DustFengsha_Init
     USE HCOX_DustGinoux_Mod,    ONLY : HCOX_DustGinoux_Init
     USE HCOX_SeaSalt_Mod,       ONLY : HCOX_SeaSalt_Init
     USE HCOX_GFED_Mod,          ONLY : HCOX_GFED_Init
