@@ -815,10 +815,12 @@ CONTAINS
 !
 ! !USES:
 !
-!    USE Grid_Mod,        ONLY : DoGridComputation
-    USE inquireMod,      ONLY  : findFreeLUN
-    USE HCO_ExtList_Mod, ONLY  : HCO_GetOpt, GetExtOpt, CoreNr
-    USE HCO_VertGrid_Mod, ONLY : HCO_VertGrid_Define
+!    USE Grid_Mod,           ONLY : DoGridComputation
+    USE inquireMod,         ONLY  : findFreeLUN
+    USE HCO_ExtList_Mod,    ONLY  : HCO_GetOpt, GetExtOpt, CoreNr
+    USE HCO_VertGrid_Mod,   ONLY : HCO_VertGrid_Define
+    USE Ncdf_Mod,           ONLY : NC_Open
+    USE Ncdf_Mod,           ONLY : NC_Close
 !
 ! !INPUT PARAMETERS:
 !
@@ -842,7 +844,7 @@ CONTAINS
 !
     ! Scalars
     INTEGER               :: NX, NY, NZ
-    INTEGER               :: I, J, N, LNG, LOW, UPP
+    INTEGER               :: I, J, N, LNG, LOW, UPP, ncLun
     INTEGER               :: SZ(3)
     INTEGER               :: IU_FILE, IOS, STRT
     REAL(hp)              :: RG(4)
@@ -857,6 +859,8 @@ CONTAINS
     CHARACTER(LEN=  1)    :: COL 
     CHARACTER(LEN=255)    :: MyGridFile 
     CHARACTER(LEN=2047)   :: MSG, DUM
+
+!    TYPE(ListCont), POINTER  :: Lct
 
     !=================================================================
     ! SET_GRID begins here
@@ -885,11 +889,66 @@ CONTAINS
     IU_FILE = findFreeLUN()
 
     ! Open grid file 
+    ! Read from other Grid.rc file source if it's not a netCDF file
+   
+    IF ( .NOT. TRIM(GridFile) == "SCRIP.nc" ) THEN
+    
     OPEN( IU_FILE, FILE=TRIM(GridFile), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
        MSG = 'Error 1 reading ' // TRIM(GridFile)
        CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
        RETURN
+    ENDIF
+
+    ! Read from netCDF SCRIP file otherwise
+    ELSE
+
+    ! ----------------------------------------------------------------
+    ! Open netCDF
+    ! ----------------------------------------------------------------
+
+    ! Check if file is already in buffer. In that case use existing
+    ! open stream. Otherwise open new file. At any given time there
+    ! can only be one file in buffer.
+    ncLun = -1
+    IF ( HcoState%ReadLists%FileLun > 0 ) THEN
+       IF ( TRIM(HcoState%ReadLists%FileInArchive) == TRIM(GridFile) ) THEN
+          ncLun = HcoState%ReadLists%FileLun
+       ELSE
+          CALL NC_CLOSE ( HcoState%ReadLists%FileLun )
+          HcoState%ReadLists%FileLun = -1
+       ENDIF
+    ENDIF
+
+    ! To read from existing stream:
+    IF ( ncLun > 0 ) THEN
+
+       ! Verbose mode
+       IF ( HCO_IsVerb(HcoState%Config%Err,2) ) THEN
+          WRITE(MSG,*) '- Reading from existing stream: ', TRIM(GridFile)
+          CALL HCO_MSG(MSG,SEP1='-')
+       ENDIF
+
+    ! To open a new file:
+    ELSE
+       CALL NC_OPEN ( TRIM(GridFile), ncLun )
+
+       ! Verbose mode
+       IF ( HCO_IsVerb(HcoState%Config%Err,1) ) THEN
+          WRITE(MSG,*) '- Opening file: ', TRIM(GridFile)
+          CALL HCO_MSG(MSG,SEP1='-')
+       ENDIF
+
+       ! Also write to standard output
+       WRITE( 6, 100 ) TRIM( GridFile )
+ 100   FORMAT( 'HEMCO: Opening ', a )
+
+       ! This is now the file in archive
+       HcoState%ReadLists%FileInArchive = TRIM(GridFile)
+       HcoState%ReadLists%FileLun       = ncLun
+    ENDIF
+
+
     ENDIF
 
     ! ------------------------------------------------------------------
