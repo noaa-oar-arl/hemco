@@ -821,6 +821,12 @@ CONTAINS
     USE HCO_VertGrid_Mod,   ONLY : HCO_VertGrid_Define
     USE Ncdf_Mod,           ONLY : NC_Open
     USE Ncdf_Mod,           ONLY : NC_Close
+    USE Ncdf_Mod,           ONLY : NC_Read_Var
+    USE Ncdf_Mod,           ONLY : NC_Read_Arr
+    USE Ncdf_Mod,           ONLY : NC_Get_Grid_Edges
+    USE Ncdf_Mod,           ONLY : NC_Get_Sigma_Levels
+    USE Ncdf_Mod,           ONLY : NC_ISMODELLEVEL
+
 !
 ! !INPUT PARAMETERS:
 !
@@ -889,7 +895,7 @@ CONTAINS
     IU_FILE = findFreeLUN()
 
     ! Open grid file 
-    ! Read from other Grid.rc file source if it's not a netCDF file
+    ! Read from other Grid.rc file source if it's not a netCDF SCRIP file
    
     IF ( .NOT. TRIM(GridFile) == "SCRIP.nc" ) THEN
     
@@ -898,57 +904,6 @@ CONTAINS
        MSG = 'Error 1 reading ' // TRIM(GridFile)
        CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
        RETURN
-    ENDIF
-
-    ! Read from netCDF SCRIP file otherwise
-    ELSE
-
-    ! ----------------------------------------------------------------
-    ! Open netCDF
-    ! ----------------------------------------------------------------
-
-    ! Check if file is already in buffer. In that case use existing
-    ! open stream. Otherwise open new file. At any given time there
-    ! can only be one file in buffer.
-    ncLun = -1
-    IF ( HcoState%ReadLists%FileLun > 0 ) THEN
-       IF ( TRIM(HcoState%ReadLists%FileInArchive) == TRIM(GridFile) ) THEN
-          ncLun = HcoState%ReadLists%FileLun
-       ELSE
-          CALL NC_CLOSE ( HcoState%ReadLists%FileLun )
-          HcoState%ReadLists%FileLun = -1
-       ENDIF
-    ENDIF
-
-    ! To read from existing stream:
-    IF ( ncLun > 0 ) THEN
-
-       ! Verbose mode
-       IF ( HCO_IsVerb(HcoState%Config%Err,2) ) THEN
-          WRITE(MSG,*) '- Reading from existing stream: ', TRIM(GridFile)
-          CALL HCO_MSG(MSG,SEP1='-')
-       ENDIF
-
-    ! To open a new file:
-    ELSE
-       CALL NC_OPEN ( TRIM(GridFile), ncLun )
-
-       ! Verbose mode
-       IF ( HCO_IsVerb(HcoState%Config%Err,1) ) THEN
-          WRITE(MSG,*) '- Opening file: ', TRIM(GridFile)
-          CALL HCO_MSG(MSG,SEP1='-')
-       ENDIF
-
-       ! Also write to standard output
-       WRITE( 6, 100 ) TRIM( GridFile )
- 100   FORMAT( 'HEMCO: Opening ', a )
-
-       ! This is now the file in archive
-       HcoState%ReadLists%FileInArchive = TRIM(GridFile)
-       HcoState%ReadLists%FileLun       = ncLun
-    ENDIF
-
-
     ENDIF
 
     ! ------------------------------------------------------------------
@@ -1249,6 +1204,97 @@ CONTAINS
     ! Close file
     ! ------------------------------------------------------------------
     CLOSE( IU_FILE )      
+
+    ELSE  ! Read from netCDF SCRIP file otherwise
+
+    ! ----------------------------------------------------------------
+    ! Open netCDF SCRIP File
+    ! ----------------------------------------------------------------
+
+    ! Check if file is already in buffer. In that case use existing
+    ! open stream. Otherwise open new file. At any given time there
+    ! can only be one file in buffer.
+    ncLun = -1
+    IF ( HcoState%ReadLists%FileLun > 0 ) THEN
+       IF ( TRIM(HcoState%ReadLists%FileInArchive) == TRIM(GridFile) ) THEN
+          ncLun = HcoState%ReadLists%FileLun
+       ELSE
+          CALL NC_CLOSE ( HcoState%ReadLists%FileLun )
+          HcoState%ReadLists%FileLun = -1
+       ENDIF
+    ENDIF
+
+    ! To read from existing stream:
+    IF ( ncLun > 0 ) THEN
+
+       ! Verbose mode
+       IF ( HCO_IsVerb(HcoState%Config%Err,2) ) THEN
+          WRITE(MSG,*) '- Reading from existing stream: ', TRIM(GridFile)
+          CALL HCO_MSG(MSG,SEP1='-')
+       ENDIF
+
+    ! To open a new file:
+    ELSE
+       CALL NC_OPEN ( TRIM(GridFile), ncLun )
+
+       ! Verbose mode
+       IF ( HCO_IsVerb(HcoState%Config%Err,1) ) THEN
+          WRITE(MSG,*) '- Opening file: ', TRIM(GridFile)
+          CALL HCO_MSG(MSG,SEP1='-')
+       ENDIF
+
+       ! Also write to standard output
+       WRITE( 6, 100 ) TRIM( GridFile )
+ 100   FORMAT( 'HEMCO: Opening ', a )
+
+       ! This is now the file in archive
+       HcoState%ReadLists%FileInArchive = TRIM(GridFile)
+       HcoState%ReadLists%FileLun       = ncLun
+
+    END IF
+    ! ----------------------------------------------------------------
+    ! Read grid from netCDF SCRIP File
+    ! ----------------------------------------------------------------
+
+    ! Extract longitude midpoints
+    !CALL NC_READ_VAR ( ncLun, 'lon', nlon, thisUnit, LonMid, NCRC )
+    !IF ( NCRC /= 0 ) THEN
+    !   CALL HCO_ERROR( 'NC_READ_VAR: lon', RC )
+    !   RETURN
+    !ENDIF
+
+    !Work needed...Here we need XMIN, XMAX, YMIN, YMAX, NX, NY, and NZ
+
+    !NZ will need to be set somewhere else as there is no vertical information
+    !in the SCRIP file read from disk (e.g., Config file parameter NZ?)
+! ------------------------------------------------------------------
+    ! Now that sizes are known, allocate all arrays
+    ! ------------------------------------------------------------------
+    ALLOCATE ( XMID     (NX,  NY,  1   ) )
+    ALLOCATE ( YMID     (NX,  NY,  1   ) )
+    ALLOCATE ( XEDGE    (NX+1,NY,  1   ) )
+    ALLOCATE ( YEDGE    (NX,  NY+1,1   ) )
+    ALLOCATE ( YSIN     (NX,  NY+1,1   ) )
+    ALLOCATE ( AREA_M2  (NX,  NY,  1   ) )
+    ALLOCATE ( AP       (          NZ+1) )
+    ALLOCATE ( BP       (          NZ+1) )
+    YSIN      = HCO_MISSVAL
+    AREA_M2   = HCO_MISSVAL
+    XMID      = HCO_MISSVAL
+    YMID      = HCO_MISSVAL
+    XEDGE     = HCO_MISSVAL
+    YEDGE     = HCO_MISSVAL
+    AP        = HCO_MISSVAL
+    BP        = HCO_MISSVAL
+
+    ! Do we already have the midpoints or edgepoints from the SCRIP file?
+    ! Important to not calculate these assuming constant grid spacing below.
+
+    END IF  !End read netCDF SCRIP File Option
+
+
+
+
 
     ! ------------------------------------------------------------------
     ! Fill grid box values
