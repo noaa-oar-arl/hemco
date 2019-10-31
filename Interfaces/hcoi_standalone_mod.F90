@@ -815,17 +815,20 @@ CONTAINS
 !
 ! !USES:
 !
+
 !    USE Grid_Mod,           ONLY : DoGridComputation
     USE inquireMod,         ONLY  : findFreeLUN
     USE HCO_ExtList_Mod,    ONLY  : HCO_GetOpt, GetExtOpt, CoreNr
     USE HCO_VertGrid_Mod,   ONLY : HCO_VertGrid_Define
     USE Ncdf_Mod,           ONLY : NC_Open
     USE Ncdf_Mod,           ONLY : NC_Close
-    USE Ncdf_Mod,           ONLY : NC_Read_Var
     USE Ncdf_Mod,           ONLY : NC_Read_Arr
-    USE Ncdf_Mod,           ONLY : NC_Get_Grid_Edges
-    USE Ncdf_Mod,           ONLY : NC_Get_Sigma_Levels
-    USE Ncdf_Mod,           ONLY : NC_ISMODELLEVEL
+    USE Ncdf_Mod,           ONLY : NC_Read_Var
+!    USE Ncdf_Mod,           ONLY : NC_Get_Grid_Edges
+!    USE Ncdf_Mod,           ONLY : NC_Get_Sigma_Levels
+!    USE Ncdf_Mod,           ONLY : NC_ISMODELLEVEL
+
+
 
 !
 ! !INPUT PARAMETERS:
@@ -852,7 +855,9 @@ CONTAINS
     INTEGER               :: NX, NY, NZ
     INTEGER               :: I, J, N, LNG, LOW, UPP, ncLun
     INTEGER               :: SZ(3)
-    INTEGER               :: IU_FILE, IOS, STRT
+    INTEGER               :: IU_FILE, IOS, STRT, NCRC
+    INTEGER               :: nlat, nlon
+    INTEGER               :: nlatEdge, nlonEdge
     REAL(hp)              :: RG(4)
     REAL(hp)              :: XMIN, XMAX
     REAL(hp)              :: YMIN, YMAX
@@ -861,10 +866,21 @@ CONTAINS
     REAL(hp)              :: PI_180, YDGR, YSN, SIN_DELTA, AM2 
     REAL(hp), ALLOCATABLE :: Ap(:), Bp(:)
     LOGICAL               :: FOUND,   EOF
+    CHARACTER(LEN=255)    :: thisUnit
     CHARACTER(LEN=255)    :: LOC 
     CHARACTER(LEN=  1)    :: COL 
     CHARACTER(LEN=255)    :: MyGridFile 
     CHARACTER(LEN=2047)   :: MSG, DUM
+    REAL(hp), POINTER     :: Grid_latMid   (:)
+    REAL(hp), POINTER     :: Grid_lonMid   (:)
+    REAL(hp), POINTER     :: Grid_latEdge   (:)
+    REAL(hp), POINTER     :: Grid_lonEdge   (:)
+    REAL(hp), POINTER     :: LonMid   (:,:,:,:)
+    REAL(hp), POINTER     :: LatMid   (:,:,:,:)
+    REAL(hp), POINTER     :: LonEdge  (:,:,:,:)
+    REAL(hp), POINTER     :: LatEdge  (:,:,:,:)
+
+
 
 !    TYPE(ListCont), POINTER  :: Lct
 
@@ -897,7 +913,7 @@ CONTAINS
     ! Open grid file 
     ! Read from other Grid.rc file source if it's not a netCDF SCRIP file
    
-    IF ( .NOT. TRIM(GridFile) == "SCRIP.nc" ) THEN
+    IF ( .NOT. TRIM(GridFile) == "C384_grid_spec.tile1.nc" ) THEN
     
     OPEN( IU_FILE, FILE=TRIM(GridFile), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
@@ -1208,7 +1224,7 @@ CONTAINS
     ELSE  ! Read from netCDF SCRIP file otherwise
 
     ! ----------------------------------------------------------------
-    ! Open netCDF SCRIP File
+    ! Open two-dimensional netCDF SCRIP File
     ! ----------------------------------------------------------------
 
     ! Check if file is already in buffer. In that case use existing
@@ -1253,20 +1269,203 @@ CONTAINS
 
     END IF
     ! ----------------------------------------------------------------
-    ! Read grid from netCDF SCRIP File
+    ! Read grid from two-dimensional netCDF SCRIP File for Different Projections
     ! ----------------------------------------------------------------
 
-    ! Extract longitude midpoints
-    !CALL NC_READ_VAR ( ncLun, 'lon', nlon, thisUnit, LonMid, NCRC )
-    !IF ( NCRC /= 0 ) THEN
-    !   CALL HCO_ERROR( 'NC_READ_VAR: lon', RC )
-    !   RETURN
-    !ENDIF
+    ! Read NetCDF File Grid midpoint indices to get array size
+    CALL NC_READ_VAR ( ncLun, 'grid_yt', nlat, thisUnit, Grid_latMid, NCRC )
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_VAR: grid_yt', RC )
+       RETURN
+    ENDIF
 
+    ! Read NetCDF File Grid midpoint indices to get array size
+    CALL NC_READ_VAR ( ncLun, 'grid_xt', nlon, thisUnit, Grid_lonMid, NCRC )
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_VAR: grid_xt', RC )
+       RETURN
+    ENDIF
+
+   ! Read two-dimensional Grid midpoint latitude values
+   CALL NC_READ_ARR( fID      = ncLun,              &
+                      ncVar   = 'grid_latt',        &
+                      lon1    = 1,                  &
+                      lon2    = nlon,               &
+                      lat1    = 1,                  &
+                      lat2    = nlat,               &
+                      lev1    = 1,                  &
+                      lev2    = 1,                  &
+                      time1   = 0,                  &
+                      time2   = 0,                  &
+                      ncArr   = LatMid,             &
+                      varUnit = thisUnit,           &
+                      wgt1    = -1.0_sp,            &
+                      wgt2    = -1.0_sp,            &
+                      MissVal = HCO_MISSVAL,        &
+                      ArbIdx  = -1,                 &
+                      RC      = NCRC                 )
+
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_ARR:  LatMid', RC )
+       RETURN
+    ENDIF
+
+    ! Read two-dimensional Grid midpoint longitude values
+   CALL NC_READ_ARR( fID      = ncLun,              &
+                      ncVar   = 'grid_lont',        &
+                      lon1    = 1,                  &
+                      lon2    = nlon,               &
+                      lat1    = 1,                  &
+                      lat2    = nlat,               &
+                      lev1    = 1,                  &
+                      lev2    = 1,                  &
+                      time1   = 0,                  &
+                      time2   = 0,                  &
+                      ncArr   = LonMid,             &
+                      varUnit = thisUnit,           &
+                      wgt1    = -1.0_sp,            &
+                      wgt2    = -1.0_sp,            &
+                      MissVal = HCO_MISSVAL,        &
+                      ArbIdx  = -1,                 &
+                      RC      = NCRC                 )
+
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_ARR: LonMid', RC )
+       RETURN
+    ENDIF
+
+    ! Read NetCDF File Grid cornerpoint/edges indices to get array size
+    CALL NC_READ_VAR ( ncLun, 'grid_y', nlatEdge, thisUnit, Grid_latEdge, NCRC )
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_VAR: grid_y (edge)', RC )
+       RETURN
+    ENDIF
+
+    ! Read NetCDF File Grid midpoint indices to get array size
+    CALL NC_READ_VAR ( ncLun, 'grid_x', nlonEdge, thisUnit, Grid_lonEdge, NCRC )
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_VAR: grid_x (edge)', RC )
+       RETURN
+    ENDIF
+
+   ! Read two-dimensional Grid Edge latitude values
+   CALL NC_READ_ARR( fID      = ncLun,              &
+                      ncVar   = 'grid_lat',         &
+                      lon1    = 1,                  &
+                      lon2    = nlonEdge,           &
+                      lat1    = 1,                  &
+                      lat2    = nlatEdge,           &
+                      lev1    = 1,                  &
+                      lev2    = 1,                  &
+                      time1   = 0,                  &
+                      time2   = 0,                  &
+                      ncArr   = LatEdge,            &
+                      varUnit = thisUnit,           &
+                      wgt1    = -1.0_sp,            &
+                      wgt2    = -1.0_sp,            &
+                      MissVal = HCO_MISSVAL,        &
+                      ArbIdx  = -1,                 &
+                      RC      = NCRC                 )
+
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_ARR:  LatEdge', RC )
+       RETURN
+    ENDIF
+
+    ! Read two-dimensional Grid Edge longitude values
+   CALL NC_READ_ARR( fID      = ncLun,              &
+                      ncVar   = 'grid_lon',         &
+                      lon1    = 1,                  &
+                      lon2    = nlonEdge,           &
+                      lat1    = 1,                  &
+                      lat2    = nlatEdge,           &
+                      lev1    = 1,                  &
+                      lev2    = 1,                  &
+                      time1   = 0,                  &
+                      time2   = 0,                  &
+                      ncArr   = LonEdge,            &
+                      varUnit = thisUnit,           &
+                      wgt1    = -1.0_sp,            &
+                      wgt2    = -1.0_sp,            &
+                      MissVal = HCO_MISSVAL,        &
+                      ArbIdx  = -1,                 &
+                      RC      = NCRC                 )
+
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_ARR: LonEdge', RC )
+       RETURN
+    ENDIF
+
+!    ! Read NetCDF File Longitude Midpoints
+!    CALL NC_READ_VAR ( ncLun, 'grid_lont', nlon, thisUnit, LonMid, NCRC )
+!    IF ( NCRC /= 0 ) THEN
+!       CALL HCO_ERROR( 'NC_READ_VAR: grid_lont', RC )
+!       RETURN
+!    ENDIF
+!
+!
+!    ! Read NetCDF File Latitude Cornerpoints/Edges
+!    CALL NC_READ_VAR ( ncLun, 'grid_lat', nlatEdge, thisUnit, LatEdge, NCRC )
+!    IF ( NCRC /= 0 ) THEN
+!       CALL HCO_ERROR( 'NC_READ_VAR: grid_lat', RC )
+!       RETURN
+!    ENDIF
+!!
+!!
+!    ! Read NetCDF File Longitude Cornerpoints/Edges
+!    CALL NC_READ_VAR ( ncLun, 'grid_lon', nlonEdge, thisUnit, LonEdge, NCRC )
+!    IF ( NCRC /= 0 ) THEN
+!       CALL HCO_ERROR( 'NC_READ_VAR: grid_lon', RC )
+!       RETURN
+!    ENDIF
+
+!    ! Read NetCDF File Latitude Cornerpoint/Edge Indices
+!    CALL NC_READ_VAR ( ncLun, 'grid_y', NY, thisUnit, GridY, NCRC )
+!    IF ( NCRC /= 0 ) THEN
+!       CALL HCO_ERROR( 'NC_READ_VAR: grid_y', RC )
+!       RETURN
+!    ENDIF
+!
+!    ! Read NetCDF File Latitude Cornerpoint/Edge Indices
+!    CALL NC_READ_VAR ( ncLun, 'grid_x', NX, thisUnit, GridX, NCRC )
+!    IF ( NCRC /= 0 ) THEN
+!       CALL HCO_ERROR( 'NC_READ_VAR: grid_x', RC )
+!       RETURN
+!    ENDIF
+
+
+    ! Get lat edges: those are read from SCRIP file if possible, otherwise
+    ! calculated from the lat midpoints.
+    ! ==> Sine of lat is needed. Do conversion right here.
+!    CALL NC_GET_GRID_EDGES ( ncLun, 2, LatMid,   nlat, &
+!                                   grid_lat, nlatEdge, NCRC   )
+!    IF ( NCRC /= 0 ) THEN
+!       MSG = 'Cannot read or calculate lat edge of ' // TRIM(GridFile)
+!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+!       RETURN
+!    ENDIF
+!!
+!!    ! Get longitude edges and make sure they are steadily increasing.
+!    CALL NC_GET_GRID_EDGES ( ncLun, 1, LonMid,   nlon, &
+!                                   grid_lon,  nlonEdge, NCRC   )
+!    IF ( NCRC /= 0 ) THEN
+!       MSG = 'Cannot read or calculate lon edge of ' // TRIM(GridFile)
+!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+!       RETURN
+!    ENDIF
+!    CALL HCO_ValidateLon( HcoState, nlonEdge, grid_lon, RC )
+!    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    
     !Work needed...Here we need XMIN, XMAX, YMIN, YMAX, NX, NY, and NZ
 
     !NZ will need to be set somewhere else as there is no vertical information
     !in the SCRIP file read from disk (e.g., Config file parameter NZ?)
+
+    NX=nlon
+    NY=nlat
+    NZ=1
+
 ! ------------------------------------------------------------------
     ! Now that sizes are known, allocate all arrays
     ! ------------------------------------------------------------------
@@ -1280,20 +1479,30 @@ CONTAINS
     ALLOCATE ( BP       (          NZ+1) )
     YSIN      = HCO_MISSVAL
     AREA_M2   = HCO_MISSVAL
-    XMID      = HCO_MISSVAL
-    YMID      = HCO_MISSVAL
-    XEDGE     = HCO_MISSVAL
-    YEDGE     = HCO_MISSVAL
+!    XMID      = HCO_MISSVAL
+!    YMID      = HCO_MISSVAL
+!    XEDGE     = HCO_MISSVAL
+!    YEDGE     = HCO_MISSVAL
+    !Now force LonMid, LatMid,LonEdge,LatEdge, values and conform to XMID,YMID,
+    !XEDGE,YEDGE 3D arrays (set time dimension=0)
+    XMID      = LonMid(:,:,:,0)
+    YMID      = LatMid(:,:,:,0)
+    XEDGE     = LonEdge(:,:,:,0)
+    YEDGE     = LatEdge(:,:,:,0)
     AP        = HCO_MISSVAL
     BP        = HCO_MISSVAL
 
-    ! Do we already have the midpoints or edgepoints from the SCRIP file?
-    ! Important to not calculate these assuming constant grid spacing below.
+    !At this point we must have the midpoints or edgepoints from the SCRIP file.
+    ! Important, as to avoid calculating these assuming constant grid spacing below.
+
+
+    !Calculate XMIN, XMAX, YMIN, and YMAX
+    !XMIN=
+    !XMAX=
+    !YMIN=
+    !YMAX=
 
     END IF  !End read netCDF SCRIP File Option
-
-
-
 
 
     ! ------------------------------------------------------------------
