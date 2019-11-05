@@ -862,9 +862,9 @@ CONTAINS
     REAL(hp)              :: XMIN, XMAX
     REAL(hp)              :: YMIN, YMAX
     REAL(hp)              :: DVAL
-!    REAL(hp)              :: !DLON, DLAT
-    REAL(hp)              :: PI_180, YDGR, YSN! , SIN_DELTA, AM2
-    REAL(hp), ALLOCATABLE :: Ap(:), Bp(:), AM2(:), SIN_DELTA(:), DLON(:,:)
+    REAL(hp)              :: DLON, DLAT
+    REAL(hp)              :: PI_180, YDGR, YSN, SIN_DELTA, AM2
+    REAL(hp), ALLOCATABLE :: Ap(:), Bp(:)
     LOGICAL               :: FOUND,   EOF
     CHARACTER(LEN=255)    :: thisUnit
     CHARACTER(LEN=255)    :: LOC
