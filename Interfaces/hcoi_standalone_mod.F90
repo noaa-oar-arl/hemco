@@ -862,9 +862,9 @@ CONTAINS
     REAL(hp)              :: XMIN, XMAX
     REAL(hp)              :: YMIN, YMAX
     REAL(hp)              :: DVAL
-    REAL(hp)              :: DLON, DLAT
-    REAL(hp)              :: PI_180, YDGR, YSN, SIN_DELTA, AM2
-    REAL(hp), ALLOCATABLE :: Ap(:), Bp(:)
+!    REAL(hp)              :: !DLON, DLAT
+    REAL(hp)              :: PI_180, YDGR, YSN! , SIN_DELTA, AM2
+    REAL(hp), ALLOCATABLE :: Ap(:), Bp(:), AM2(:), SIN_DELTA(:), DLON(:,:)
     LOGICAL               :: FOUND,   EOF
     CHARACTER(LEN=255)    :: thisUnit
     CHARACTER(LEN=255)    :: LOC
@@ -879,6 +879,7 @@ CONTAINS
     REAL(hp), POINTER     :: LatMid   (:,:,:,:)
     REAL(hp), POINTER     :: LonEdge  (:,:,:,:)
     REAL(hp), POINTER     :: LatEdge  (:,:,:,:)
+    REAL(hp), POINTER     :: AREA     (:,:,:,:)
 
 
 
@@ -1304,7 +1305,6 @@ CONTAINS
          MissVal = HCO_MISSVAL,        &
          ArbIdx  = -1,                 &
          RC      = NCRC                 )
-
     IF ( NCRC /= 0 ) THEN
        CALL HCO_ERROR( 'NC_READ_ARR:  LatMid', RC )
        RETURN
@@ -1328,11 +1328,33 @@ CONTAINS
          MissVal = HCO_MISSVAL,        &
          ArbIdx  = -1,                 &
          RC      = NCRC                 )
-
     IF ( NCRC /= 0 ) THEN
        CALL HCO_ERROR( 'NC_READ_ARR: LonMid', RC )
        RETURN
     ENDIF
+
+    CALL NC_READ_ARR( fID      = ncLun,              &
+         ncVar   = 'area',        &
+         lon1    = 1,                  &
+         lon2    = nlon,               &
+         lat1    = 1,                  &
+         lat2    = nlat,               &
+         lev1    = 0,                  &
+         lev2    = 0,                  &
+         time1   = 0,                  &
+         time2   = 0,                  &
+         ncArr   = AREA,             &
+         varUnit = thisUnit,           &
+         wgt1    = -1.0_sp,            &
+         wgt2    = -1.0_sp,            &
+         MissVal = HCO_MISSVAL,        &
+         ArbIdx  = -1,                 &
+         RC      = NCRC                 )
+    IF ( NCRC /= 0 ) THEN
+       CALL HCO_ERROR( 'NC_READ_ARR: LonMid', RC )
+       RETURN
+    ENDIF
+
 
     ! Read NetCDF File Grid cornerpoint/edges indices to get array size
     CALL NC_READ_VAR ( ncLun, 'grid_y', nlatEdge, thisUnit, Grid_latEdge, NCRC )
@@ -1340,8 +1362,8 @@ CONTAINS
        CALL HCO_ERROR( 'NC_READ_VAR: grid_y (edge)', RC )
        RETURN
     ENDIF
-    
-    !    nlatEdge=nlat + 1
+
+    ! nlatEdge=nlat + 1
     ! Read NetCDF File Grid midpoint indices to get array size
     CALL NC_READ_VAR ( ncLun, 'grid_x', nlonEdge, thisUnit, Grid_lonEdge, NCRC )
     IF ( NCRC /= 0 ) THEN
@@ -1412,144 +1434,157 @@ CONTAINS
     ALLOCATE ( YMID     (nlon, nlat, 1 ) )
     ALLOCATE ( XEDGE    (nlonEdge, nlatEdge, 1 ) )
     ALLOCATE ( YEDGE    (nlonEdge, nlatEdge, 1 ) )
-    ALLOCATE ( YSIN     (nlon, nlat, 1 ) )
+    ALLOCATE ( YSIN     (nlon, nlatEdge, 1 ) )
     ALLOCATE ( AREA_M2  (nlon, nlat, 1 ) )
     ALLOCATE ( AP       (          NZ+1) )
     ALLOCATE ( BP       (          NZ+1) )
     YSIN      = HCO_MISSVAL
-    AREA_M2   = HCO_MISSVAL
     ! Now force LonMid, LatMid,LonEdge,LatEdge, values and conform to XMID,YMID,
     ! XEDGE,YEDGE 3D arrays (set time dimension=0)
     XMID      = reshape(LonMid,(/nlon,nlat,1/))
     YMID      = reshape(LatMid,(/nlon,nlat,1/))
+    AREA_M2   =	reshape(AREA  ,(/nlon,nlat,1/))
     XEDGE     = reshape(LonEdge,(/nlonEdge,nlatEdge,1/))
     YEDGE     = reshape(LatEdge,(/nlonEdge,nlatEdge,1/))
     AP        = HCO_MISSVAL
     BP        = HCO_MISSVAL
-    
+
     ! ! At this point we must have the midpoints or edgepoints from the SCRIP file.
     ! ! Important, as to avoid calculating these assuming constant grid spacing below.
     DO J = 1, nlat
        DO I = 1, nlon
+          XMID(I,J,1) = LonMid(I,J,1,1)
+          YMID(I,J,1) = LatMid(I,J,1,1)
           IF ( XMID(I,j,1) .GT. 180.) THEN
-             XMID(I,J,1) = 360. - XMID(I,J,1)
+             XMID(I,J,1) = XMID(I,J,1) - 360.
           ENDIF
        END DO
     END DO
 
     DO J = 1, nlatEdge
        DO I = 1, nlonEdge
+          XEdge(I,J,1) = LonEdge(I,J,1,1)
+          YEdge(I,J,1) = LatEdge(I,J,1,1)
           IF ( XEDGE(I,j,1) .GT. 180.) THEN
-             XEDGE(I,J,1) = 360. - XEDGE(I,J,1)
+             XEDGE(I,J,1) = XEDGE(I,J,1) - 360.
           ENDIF
        END DO
     END DO
-
+    
     ! !Calculate XMIN, XMAX, YMIN, and YMAX
     XMIN=MIN(XEdge(1,1,1),XEdge(nlonEdge,nlatEdge,1))
     XMAX=MAX(XEdge(1,1,1),XEdge(nlonEdge,nlatEdge,1))
-    YMIN=MIN(YEdge(1,1,1),YEdge(nlonEdge,nlatEdge,1))
-    YMAX=MAX(YEdge(1,1,1),YEdge(nlonEdge,nlatEdge,1))
+    YMIN=MINVAL(YEDGE) !MIN(YEdge(1,1,1),YEdge(nlonEdge,nlatEdge,1))
+    YMAX=MAXVAL(YEDGE) !MAX(YEdge(1,1,1),YEdge(nlonEdge,nlatEdge,1))
+    write(*,*) XMIN,XMAX,YMIN,YMAX
 
-    ! write(*,*) XMIN,XMAX,YMIN,YMAX
-    END IF  !End read netCDF SCRIP File Option
+    ! Get sine of latitude edges
+    DO J = 1, nlatEdge
+       DO I = 1, nlon
+          YDGR        = PI_180 * YEDGE(I,J,1)  ! radians
+          YSN         = SIN( YDGR )            ! sine
+          YSIN(I,J,1) = YSN
+       END DO
+    END DO
+
+ END IF  !End read netCDF SCRIP File Option
 
 
-    ! ------------------------------------------------------------------
-    ! Fill grid box values
-    ! ------------------------------------------------------------------
-    DLAT = ( YMAX - YMIN ) / NY
+ ! ------------------------------------------------------------------
+ ! Fill grid box values
+ ! ------------------------------------------------------------------
+ ! DLAT = ( YMAX - YMIN ) / NY
 
-    ! Now fill values
-    DO J = 1, NY
-    DO I = 1, NX
+ ! ! Now fill values
+ ! DO J = 1, NY
+ !    DO I = 1, NX
 
-       ! Set longitude and latitude edge values if not read from disk
-       IF ( XEDGE(I,J,1) == HCO_MISSVAL ) THEN
+ !       ! Set longitude and latitude edge values if not read from disk
+ !       IF ( XEDGE(I,J,1) == HCO_MISSVAL ) THEN
 
-          ! eventually get from mid-points
-          IF ( XMID(I,J,1) /= HCO_MISSVAL ) THEN
-             IF ( I > 1 ) THEN
-                DLON         = XMID(I,J,1) - XMID(I-1,J,1)
-             ELSE
-                DLON         = XMID(I+1,J,1) - XMID(I,J,1)
-             ENDIF
-             XEDGE(I,J,1) = XMID(I,J,1) - DLON/2.0
+ !          ! eventually get from mid-points
+ !          IF ( XMID(I,J,1) /= HCO_MISSVAL ) THEN
+ !             IF ( I > 1 ) THEN
+ !                DLON         = XMID(I,J,1) - XMID(I-1,J,1)
+ !             ELSE
+ !                DLON         = XMID(I+1,J,1) - XMID(I,J,1)
+ !             ENDIF
+ !             XEDGE(I,J,1) = XMID(I,J,1) - DLON/2.0
 
-          ! otherwise assume constant grid spacing
-          ELSE
-             DLON = ( XMAX - XMIN ) / NX
-             XEDGE(I,J,1) = XMIN + ( (I-1) * DLON )
-          ENDIF
-       ELSE
-          DLON = XEDGE(I+1,J,1) - XEDGE(I,J,1)
-       ENDIF
+ !             ! otherwise assume constant grid spacing
+ !          ELSE
+ !             DLON = ( XMAX - XMIN ) / NX
+ !             XEDGE(I,J,1) = XMIN + ( (I-1) * DLON )
+ !          ENDIF
+ !       ELSE
+ !          DLON = XEDGE(I+1,J,1) - XEDGE(I,J,1)
+ !       ENDIF
 
-       IF ( YEDGE(I,J,1) == HCO_MISSVAL ) THEN
+ !       IF ( YEDGE(I,J,1) == HCO_MISSVAL ) THEN
 
-          ! eventually get from mid-points
-          IF ( YMID(I,J,1) /= HCO_MISSVAL ) THEN
-             IF ( J > 1 ) THEN
-                DLAT         = YMID(I,J,1) - YMID(I,J-1,1)
-             ELSE
-                DLAT         = YMID(I,J+1,1) - YMID(I,J,1)
-             ENDIF
-             YEDGE(I,J,1) = YMID(I,J,1) - DLAT/2.0
+ !          ! eventually get from mid-points
+ !          IF ( YMID(I,J,1) /= HCO_MISSVAL ) THEN
+ !             IF ( J > 1 ) THEN
+ !                DLAT         = YMID(I,J,1) - YMID(I,J-1,1)
+ !             ELSE
+ !                DLAT         = YMID(I,J+1,1) - YMID(I,J,1)
+ !             ENDIF
+ !             YEDGE(I,J,1) = YMID(I,J,1) - DLAT/2.0
 
-          ! otherwise assume constant grid spacing
-          ELSE
-             DLAT = ( YMAX - YMIN ) / NY
-             YEDGE(I,J,1) = YMIN + ( (J-1) * DLAT )
-          ENDIF
-       ELSE
-          DLAT = YEDGE(I,J+1,1) - YEDGE(I,J,1)
-       ENDIF
+ !             ! otherwise assume constant grid spacing
+ !          ELSE
+ !             DLAT = ( YMAX - YMIN ) / NY
+ !             YEDGE(I,J,1) = YMIN + ( (J-1) * DLAT )
+ !          ENDIF
+ !       ELSE
+ !          DLAT = YEDGE(I,J+1,1) - YEDGE(I,J,1)
+ !       ENDIF
 
-       ! Set mid values
-       IF ( XMID(I,J,1) == HCO_MISSVAL ) THEN
-          XMID(I,J,1) = XEDGE(I,J,1) + ( DLON / 2.0_hp )
-       ENDIF
-       IF ( YMID(I,J,1) == HCO_MISSVAL ) THEN
-          YMID(I,J,1) = YEDGE(I,J,1) + ( DLAT / 2.0_hp )
-       ENDIF
+ !       ! Set mid values
+ !       IF ( XMID(I,J,1) == HCO_MISSVAL ) THEN
+ !          XMID(I,J,1) = XEDGE(I,J,1) + ( DLON / 2.0_hp )
+ !       ENDIF
+ !       IF ( YMID(I,J,1) == HCO_MISSVAL ) THEN
+ !          YMID(I,J,1) = YEDGE(I,J,1) + ( DLAT / 2.0_hp )
+ !       ENDIF
 
-       ! Get sine of latitude edges
-       YDGR        = PI_180 * YEDGE(I,J,1)  ! radians
-       YSN         = SIN( YDGR )            ! sine
-       YSIN(I,J,1) = YSN
+ !       ! Get sine of latitude edges
+ !       YDGR        = PI_180 * YEDGE(I,J,1)  ! radians
+ !       YSN         = SIN( YDGR )            ! sine
+ !       YSIN(I,J,1) = YSN
 
-       ! Eventually set uppermost edge
-       IF ( I == NX ) THEN
-          IF ( XEDGE(I+1,J,1) == HCO_MISSVAL ) THEN
-             XEDGE(I+1,J,1) = XMIN + I * DLON
-          ENDIF
-       ENDIF
-       IF ( J == NY ) THEN
-          IF ( YEDGE(I,J+1,1) == HCO_MISSVAL ) THEN
-             YEDGE(I,J+1,1) = YMIN + J * DLAT
-          ENDIF
-          YDGR           = PI_180 * YEDGE(I,J+1,1)  ! radians
-          YSN            = SIN( YDGR )              ! sine
-          YSIN(I,J+1,1)  = YSN
-       ENDIF
+ !       ! Eventually set uppermost edge
+ !       IF ( I == NX ) THEN
+ !          IF ( XEDGE(I+1,J,1) == HCO_MISSVAL ) THEN
+ !             XEDGE(I+1,J,1) = XMIN + I * DLON
+ !          ENDIF
+ !       ENDIF
+ !       IF ( J == NY ) THEN
+ !          IF ( YEDGE(I,J+1,1) == HCO_MISSVAL ) THEN
+ !             YEDGE(I,J+1,1) = YMIN + J * DLAT
+ !          ENDIF
+ !          YDGR           = PI_180 * YEDGE(I,J+1,1)  ! radians
+ !          YSN            = SIN( YDGR )              ! sine
+ !          YSIN(I,J+1,1)  = YSN
+ !       ENDIF
 
-    ENDDO
-    ENDDO
+ !    ENDDO
+ ! ENDDO
 
     ! Calculate grid box areas. Follow calculation from grid_mod.F90
     ! of GEOS-Chem.
-    DO J = 1, NY
+    ! DO J = 1, NY
 
-       ! delta latitude
-       SIN_DELTA = YSIN(1,J+1,1) - YSIN(1,J,1)
+    !    ! delta latitude
+    !    SIN_DELTA = YSIN(1,J+1,1) - YSIN(1,J,1)
 
-       ! Grid box area.
-       AM2 = DLON * PI_180 * HcoState%Phys%Re**2 * SIN_DELTA
+    !    ! Grid box area.
+    !    AM2 = DLON * PI_180 * HcoState%Phys%Re**2 * SIN_DELTA
 
-       ! Pass to array
-       AREA_M2(:,J,1) = AM2
+    !    ! Pass to array
+    !    AREA_M2(:,J,1) = AM2
 
-    ENDDO
+    ! ENDDO
 
     ! Set grid dimensions
     HcoState%NX = NX
