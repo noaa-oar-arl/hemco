@@ -166,22 +166,7 @@ CONTAINS
 !  Density: 2500, 2650, 2650, 2650 (kg/m3)
 !
 ! !REVISION HISTORY:
-!  08 Apr 2004 - T. D. Fairlie - Initial version
-!  (1 ) Added OpenMP parallelization (bmy, 4/8/04)
-!  (2 ) Now references DATA_DIR from "directory_mod.f" (bmy, 7/20/04)
-!  25 Aug 2010 - R. Yantosca - Added ProTeX headers
-!  01 Mar 2012 - R. Yantosca - Now use GET_AREA_M2(I,J,L) from grid_mod.F90
-!  01 Aug 2012 - R. Yantosca - Add reference to findFreeLUN from inqure_mod.F90
-!  03 Aug 2012 - R. Yantosca - Move calls to findFreeLUN out of DEVEL block
-!  09 Nov 2012 - M. Payer    - Replaced all met field arrays with State_Met
-!                              derived type object
-!  26 Feb 2013 - R. Yantosca - Now accept Input_Opt via the arg list
-!  11 Dec 2013 - C. Keller   - Now a HEMCO extension
-!  29 Sep 2014 - R. Yantosca - Bug fix: SRCE_CLAY should have been picked when
-!                              M=3 but was picked when M=2.  Now corrected.
-!  26 Jun 2015 - E. Lundgren - Add L. Zhang new dust size distribution scheme
-!  08 Jul 2015 - M. Sulprizio- Now include dust alkalinity source (tdf 04/10/08)
-!  26 Oct 2016 - R. Yantosca - Don't nullify local ptrs in declaration stmts
+
 !EOP
 !------------------------------------------------------------------------------
 !BOC
@@ -238,6 +223,7 @@ CONTAINS
 
     ! Enter
     CALL HCO_ENTER(HcoState%Config%Err,'HCOX_DustFengsha_Run (hcox_dustfengsha_mod.F90)',RC)
+!    write(*,*) 'HERE ->>>>>>>>>>>>>>>>>>>>>'
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Set gravity at earth surface (cm/s^2)
@@ -261,7 +247,7 @@ CONTAINS
     !=================================================================
     ! Point to DUST source functions
     !=================================================================
-    !IF ( HcoClock_First(HcoState%Clock,.TRUE.) ) THEN
+!    IF ( HcoClock_First(HcoState%Clock,.TRUE.) ) THEN
 
        ! Sand
        CALL HCO_EvalFld ( am_I_Root, HcoState, 'SAND', SRCE_SAND, RC )
@@ -284,7 +270,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) RETURN
 
 
-    !ENDIF
+!    ENDIF
 
     !=================================================================
     ! Compute dust emisisons
@@ -303,42 +289,47 @@ CONTAINS
              ! orography
              ! Ocean is 0 - land is 1 - ice is 2
              ! write(*,*) 'CALCULATE ORO'
-             oro = ExtState%WLI%Arr%Val(I,J) !HCO_LANDTYPE(ExtState%WLI%Arr%Val(I,J), ExtState%ALBD%Arr%Val(I,J))
+             ! oro = ExtState%WLI%Arr%Val(I,J) !HCO_LANDTYPE(ExtState%WLI%Arr%Val(I,J), ExtState%ALBD%Arr%Val(I,J))
 
              if (oro .eq. 0 ) then
                 cycle
              endif
-
+             ! write(*,*) 'ORO1 cycle <<<<<<<<<<<<<<<<'
              if (oro.eq.2) then
                 cycle
              endif
-             
+             ! write(*,*) 'ORO2 Cycle <<<<<<<<<<<<<<<<'
              ! fractional clay sand silt (0 -> 1)
              clay = SRCE_CLAY(i,j)
              sand = SRCE_SAND(i,j)
-             silt = SRCE_SILT(i,j)
-             
+!             silt = SRCE_SILT(i,j)
+
              ! Z0
              ! write(*,*) 'GET z0'
              z0 = ExtState%Z0%Arr%Val(I,J)
              if (z0 > 0.2) then
                 cycle ! write(*,*) 'Z0 > 0.25'
              end if
+             ! write(*,*) 'Z0 Cycle <<<<<<<<<<<<<<<<<<<<<'
 
-             !if (clay .eq. 0 .and. sand .eq. 0) then
-             !   cycle
-             !endif
+             if (sand .gt. 110) then
+                cycle
+             endif
+             !write(*,*) 'clay sand cycle <<<<<<<<<<<<<<<<<<<<'
              !====================================================================
              ! FENGSHA uses the threshold values from Dale Gillettes many papers
              ! that is based on soil type
              ! Read from the namelist
              !====================================================================
-             stype = INT(SRCE_TYP(I,J))
-             if (stype .lt. 1.) then
-                cycle
-             end if
-!             call HcoX_DustFengsha_styp(clay,sand,silt, stype)
-             call HcoX_DustFengsha_utst(stype,u_ts0)
+             !             stype = NINT(SRCE_TYP(I,J))
+             !             write(*,*) stype,SRCE_TYP(I,J), '<<<<<<<<<<<<<STYPE'
+             !if (stype .lt. 1) then
+             !cycle
+             !end if
+             
+!             write(*,*) stype, 'stype  <<<<<<<<<<<<<<'
+             call HcoX_DustFengsha_styp(clay,sand,MIN(100., 100. - clay - sand), stype)
+             !             call HcoX_DustFengsha_utst(stype,u_ts0)
 
              ! USTAR friction velocity from the model [m/s]
              ! write(*,*) 'GET USTAR'
@@ -353,7 +344,8 @@ CONTAINS
              VSOILM = ExtState%GWETTOP%Arr%Val(I,J)
 
              ! write(*,*) 'CALL GET Moisture Correction'
-             call HcoX_DustFengsha_moisture(VSOILM, clay, stype, H)
+             call HcoX_DustFengsha_moisture(VSOILM, clay, sand, H)
+             !call HcoX_DustFengsha_Shao_Moisture(VSOILM,H)
 
              ! air density [kg / m3]
              ! write(*,*) 'GET 10m Temperature'
@@ -386,18 +378,18 @@ CONTAINS
              AREA_M2 = HcoState%Grid%AREA_M2%Val( I, J )
              SSM = SRCE_SSM(I,J)
              DUST_EMI_TOTAL(I,J) = beta * Q * SSM**2 * rhoa / GRV_SFC
-
+             !         write(*,*) ust, snow, ssm, z0
              ! Increment total dust emissions [kg/m2/s] (L. Zhang, 6/26/15)
              DO N=1, NBINS
                 SELECT CASE( N )
                 CASE( 1 )
-                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.0766d0
+                   FLUX(I,J,N) = clay ! DUST_EMI_TOTAL(I,J) * 0.0766d0
                 CASE( 2 )
-                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.1924d0
+                   FLUX(I,J,N) = sand ! DUST_EMI_TOTAL(I,J) * 0.1924d0
                 CASE( 3 )
-                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.3491d0
+                   FLUX(I,J,N) = stype ! DUST_EMI_TOTAL(I,J) * 0.3491d0
                 CASE( 4 )
-                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) * 0.3819d0
+                   FLUX(I,J,N) = DUST_EMI_TOTAL(I,J) ! DUST_EMI_TOTAL(I,J) * 0.3819d0
                 END SELECT
                 IF ( ExtNrAlk > 0 ) THEN
                    FLUX_ALK(I,J,N) = 0.04 * FLUX(I,J,N)
@@ -467,13 +459,13 @@ CONTAINS
     real *8 :: uth(13) = &
          (/ 0.07,   & ! Sand          - 1
          0.15,    & ! Loamy Sand      - 2
-         0.15,    & ! Sandy Loam      - 3
-         0.19,    & ! Silt Loam       - 4
-         0.30,    & ! Silt            - 5
-         0.30,    & ! Loam            - 6
-         0.37,    & ! Sandy Clay Loam - 7
-         0.30,    & ! Silty Clay Loam - 8
-         0.30,    & ! Clay Loam       - 9
+         0.27,    & ! Sandy Loam      - 3
+         0.40,    & ! Silt Loam       - 4
+         0.45,    & ! Silt            - 5
+         0.45,    & ! Loam            - 6
+         0.55,    & ! Sandy Clay Loam - 7
+         0.45,    & ! Silty Clay Loam - 8
+         0.50,    & ! Clay Loam       - 9
          0.45,    & ! Sandy Clay      - 10
          0.50,    & ! Silty Clay      - 11
          0.45,    & ! Clay            - 12
@@ -482,58 +474,118 @@ CONTAINS
     return
   end subroutine HcoX_DustFengsha_utst
 
-  subroutine HcoX_DustFengsha_moisture(VSOILM, clay, soil_type, H)
+!   subroutine HcoX_DustFengsha_moisture(VSOILM, clay, soil_type, H)
+!     ! INPUTS
+!     real*8, intent(in)  :: VSOILM ! volumetric soil moisture [m3/m3]
+!     real*8, intent(in)  :: clay   ! clay fraction [0-1]
+!     integer, intent(in) :: soil_type
+! !    real*8, intent(in)  :: bulkd
+!     ! OUTPUTS
+!     real*8, intent(out) :: H ! soil moisture correction - Fecan 1999
+
+!     ! Local
+!     real*8              :: gmoist ! gravimetric soil moisture
+!     real*8              :: bulk_dens_dry
+!     real*8              :: limit
+
+!     ! parameters
+!     real*8, parameter   :: bulk_dens = 2650.0d0
+!     real*8, parameter   :: h20_dens = 1000.0d0
+!     real*8              :: soilml1( 13 ) = (/ 0.395,    & ! Sand
+!          0.410,    & ! Loamy Sand
+!          0.435,    & ! Sandy Loam
+!          0.485,    & ! Silt Loam
+!          0.476,    & ! Silt
+!          0.451,    & ! Loam
+!          0.420,    & ! Sandy Clay Loam
+!          0.477,    & ! Silty Clay Loam
+!          0.476,    & ! Clay Loam
+!          0.426,    & ! Sandy Clay
+!          0.482,    & ! Silty Clay
+!          0.482,    & ! Clay
+!          0.482 /)    ! Other
+!     ! Bulk density of dry surface soil  [kg m-3]
+!     bulk_dens_dry = bulk_dens * ( 1.0d0 - VSOILM)
+!     ! Gravimetric water content [ kg kg-1]
+!     gmoist = 100 * VSOILM * h20_dens / bulk_dens_dry
+!     if (gmoist.ge.1e10) then
+!        gmoist = 0.
+!     endif
+
+!     ! gravimetric water threshold
+!     limit = .0014* clay ** 2 + .17 * clay
+!     if (gmoist > limit) then
+!        H = sqrt( 1.0d0 + 1.21D0 * (gmoist - soilml1(soil_type)) ** 0.68D0 )
+!     else
+!        H = 1.0d0
+!     endif
+!     return
+!   end subroutine HcoX_DustFengsha_moisture
+  subroutine HcoX_DustFengsha_moisture(VSOILM, clay, sand, H)
     ! INPUTS
     real*8, intent(in)  :: VSOILM ! volumetric soil moisture [m3/m3]
     real*8, intent(in)  :: clay   ! clay fraction [0-1]
-    integer, intent(in) :: soil_type
+    real*8, intent(in) :: sand
 !    real*8, intent(in)  :: bulkd
     ! OUTPUTS
     real*8, intent(out) :: H ! soil moisture correction - Fecan 1999
 
     ! Local
-    real*8              :: gmoist ! gravimetric soil moisture
+    real*8              :: gwc ! gravimetric soil moisture
     real*8              :: bulk_dens_dry
     real*8              :: limit
+    real*8              :: wsat
+    real*8              :: wdry
+    real*8              :: wopt
+    real*8              :: mpot
+    real*8              :: b      !exponent b
 
     ! parameters
     real*8, parameter   :: bulk_dens = 2650.0d0
     real*8, parameter   :: h20_dens = 1000.0d0
-    real*8              :: soilml1( 13 ) = (/ 0.395,    & ! Sand
-         0.410,    & ! Loamy Sand
-         0.435,    & ! Sandy Loam
-         0.485,    & ! Silt Loam
-         0.476,    & ! Silt
-         0.451,    & ! Loam
-         0.420,    & ! Sandy Clay Loam
-         0.477,    & ! Silty Clay Loam
-         0.476,    & ! Clay Loam
-         0.426,    & ! Sandy Clay
-         0.482,    & ! Silty Clay
-         0.482,    & ! Clay
-         0.482 /)    ! Other
-    ! Bulk density of dry surface soil  [kg m-3]
-    bulk_dens_dry = bulk_dens * ( 1.0d0 - VSOILM)
-!    bulk_dens_dry = bulkd * ( 1.0d0 - VSOILM)
 
+    ! exponent for soil maptric potential [ unitless ]
+    b = 2.91 + 0.159 * clay !* 100.
+
+    ! saturated soil matric potential [ mm H2O ]
+    mpot = 10 * (10 ** (1.88 - 0.0131 * sand  )) ! * 100.))
+
+    ! saturated volumentric water content [ m3 m-3 ]
+    wsat = 0.489 - 0.00126 * sand !* 100.
+
+    ! volumetric water content of dry soil [ m3 m-3 ]
+    ! wdry = wsat * (316230 / mpot ** (1/ b))
+    
+    ! Bulk density of dry surface soil  [kg m-3]
+    bulk_dens_dry = bulk_dens * ( 1.0d0 - wsat)
     ! Gravimetric water content [ kg kg-1]
-    gmoist = 100 * VSOILM * h20_dens / bulk_dens_dry
-    !gmoist = 100 * VSOILM / ((1-soilml1(soil_type))*(2.65*(1.-clay/100)+2.50*clay/100))
-    if (gmoist.ge.1e23) then
-       gmoist = 0.
+    gwc = VSOILM * h20_dens / bulk_dens_dry
+    if (gwc.ge.1e10) then
+       gwc = 0.
     endif
 
     ! gravimetric water threshold
-    ! write(*,*) clay,gmoist,bulk_dens_dry, soilml1(soil_type)
     limit = .0014* clay ** 2 + .17 * clay
-
-    if (gmoist > limit) then
-       H = sqrt( 1.0d0 + 1.21D0 * (gmoist - soilml1(soil_type)) ** 0.68D0 )
+    if (gwc > limit) then
+       H = sqrt( 1. + 1.21 * (100 * (gwc - limit) ) ** 0.68)
     else
        H = 1.0d0
     endif
     return
   end subroutine HcoX_DustFengsha_moisture
+
+  subroutine HcoX_DustFengsha_Shao_Moisture(w, H)
+    ! INPUTS
+    real*8, intent(in)  :: w ! volumetric soil moisture [m3/m3]
+    real*8, intent(out) :: H ! soil moisture correction
+
+    if (w > 0.03) then
+       H = exp(95.3 * w - 2.029)
+    else
+       H = exp(22.7 * w)
+    endif
+    return
+  end subroutine HcoX_DustFengsha_Shao_Moisture
 
   subroutine HcoX_DustFengsha_styp(clay, sand, silt, type)
     !---------------------------------------------------------------
@@ -555,7 +607,7 @@ CONTAINS
     if (silt .ge. 80 .and. clay .lt. 12)                                                      type = 5      ! silt
     if (clay .ge. 7  .and. clay .lt. 27 .and.silt .ge. 28 .and. silt .lt. 50 .and.sand .le. 52)  type = 6      ! loam
     if (clay .ge. 20 .and. clay .lt. 35 .and.silt .lt. 28 .and. sand .gt. 45)                   type = 7      ! sandy clay loam
-    if (clay .ge. 27 .and. clay .lt. 40 .and.sand .gt. 20)                                     type = 8      ! silt clay loam
+    if (clay .ge. 27 .and. clay .lt. 40 .and.sand .lt. 20)                                     type = 8      ! silt clay loam
     if (clay .ge. 27 .and. clay .lt. 40 .and.sand .ge. 20 .and. sand .le. 45)                   type = 9      ! clay loam
     if (clay .ge. 35 .and. sand .gt. 45)                                                      type = 10     ! sandy clay
     if (clay .ge. 40 .and. silt .ge. 40)                                                      type = 11     ! silty clay
