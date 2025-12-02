@@ -1,20 +1,20 @@
 !BOC
-#if defined ( MAPL_ESMF )
+#if defined ( ESMF_ ) && !defined( HEMCO_STANDALONE )
 ! The 'standard' HEMCO I/O module is used for:
-! - GEOS-Chem High Performance / GCHP and GEOS (MAPL_ESMF)
+! - Pure ESMF applications without MAPL dependencies
 !EOC
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !MODULE: hcoio_write_mapl_mod.F90
+! !MODULE: hcoio_write_esmf_mod.F90
 !
-! !DESCRIPTION: Module HCOIO\_Write\_Mod.F90 is the HEMCO output
-! interface for the MAPL environment.
-! In a MAPL environment, the HEMCO diagnostics are not directly
+! !DESCRIPTION: Module HCOIO\_Write\_ESMF\_Mod is the HEMCO output
+! interface for the pure ESMF environment (without MAPL dependencies).
+! In a pure ESMF environment, the HEMCO diagnostics are not directly
 ! written to disk but passed to the gridded component export state, where
-! they can be picked up by the MAPL HISTORY component.
+! they can be picked up by the ESMF history component.
 !\\
 !\\
 ! !INTERFACE:
@@ -24,10 +24,10 @@ MODULE HCOIO_Write_Mod
 ! !USES:
 !
   USE HCO_ERROR_MOD
-  USE HCO_DIAGN_MOD
+ USE HCO_DIAGN_MOD
 
   IMPLICIT NONE
-  PRIVATE
+ PRIVATE
 !
 ! !PUBLIC MEMBER FUNCTIONS:
 !
@@ -38,7 +38,7 @@ MODULE HCOIO_Write_Mod
 !  at a later time.  They will be turned on when debugging & unit testing.
 !
 ! !REVISION HISTORY:
-!  04 May 2014 - C. Keller   - Initial version
+!  14 Nov 2024 - B. Baker - Initial version based on pure ESMF
 !  See https://github.com/geoschem/hemco for complete history
 !EOP
 !------------------------------------------------------------------------------
@@ -55,9 +55,9 @@ CONTAINS
 !
 ! !IROUTINE: HCOIO_Write
 !
-! !DESCRIPTION: Subroutine HCOIO\_Diagn\_WriteOut is the interface routine to
+! !DESCRIPTION: Subroutine HCOIO\_Write is the interface routine to
 ! link the HEMCO diagnostics arrays to the corresponding data pointers of the
-! MAPL/ESMF history component.
+! ESMF history component using pure ESMF operations.
 !\\
 !\\
 ! Since the history component internally organizes many diagnostics tasks such
@@ -67,7 +67,7 @@ CONTAINS
 ! subroutine is called.
 !\\
 !\\
-! For now, all diagnostics data is copied to the corresponding MAPL data
+! For now, all diagnostics data is copied to the corresponding ESMF data
 ! pointer so that this routine works for cases where the HEMCO precision is
 ! not equal to the ESMF precision.
 !\\
@@ -84,11 +84,13 @@ CONTAINS
 ! !USES:
 !
     USE ESMF
-    USE MAPLBase_MOD
+#ifdef ESMF_8
+    USE ESMF_FieldGetMod, ONLY : ESMF_FieldGet
+    USE ESMF_StateGetMod, ONLY : ESMF_StateGet
+#endif
     USE HCO_Types_Mod, ONLY : DiagnCont
     USE HCO_State_Mod, ONLY : HCO_State
 
-# include "MAPL_Generic.h"
 !
 ! !INPUT PARAMETERS:
 !
@@ -102,7 +104,7 @@ CONTAINS
     INTEGER,                    INTENT(INOUT) :: RC          ! Failure or success
 !
 ! !REVISION HISTORY:
-!  05 Aug 2014 - C. Keller    - Initial version
+!  14 Nov 2024 - B. Baker - Initial version based on pure ESMF
 !  See https://github.com/geoschem/hemco for complete history
 !EOP
 !------------------------------------------------------------------------------
@@ -111,13 +113,15 @@ CONTAINS
 ! !LOCAL VARIABLES:
 !
     TYPE(DiagnCont), POINTER  :: ThisDiagn
-    INTEGER                   :: PS, FLAG, STAT
+    INTEGER                   :: PS, FLAG, STAT, lstat
     CHARACTER(LEN=255)        :: MSG
     LOGICAL                   :: EOI
     REAL, POINTER             :: Ptr2D(:,:)
     REAL, POINTER             :: Ptr3D(:,:,:)
+    TYPE(ESMF_Field)          :: Field
+    TYPE(ESMF_State)          :: ExportState
 
-    CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_WRITE_ESMF (hcoio_write_mapl_mod.F90)'
+    CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_WRITE_ESMF (hcoio_write_esmf_mod.F90)'
 
     !=================================================================
     ! HCOIO_WRITE_ESMF begins here!
@@ -136,7 +140,7 @@ CONTAINS
     IF ( PRESENT(COL) ) PS = COL
 
     ! In an ESMF environment, always get all diagnostics since output
-    ! is scheduled through MAPL History!
+    ! is scheduled through ESMF History!
     EOI = .FALSE.
 
     !-----------------------------------------------------------------
@@ -147,17 +151,10 @@ CONTAINS
     ThisDiagn => NULL()
     DO WHILE ( .TRUE. )
 
-       ! IF (MAPL_am_I_Root()) WRITE(*,*) "Getting next diagnostic in list"
-
        ! Get next diagnostics in list. This will return the next
        ! diagnostics container that contains content to be written
        ! out on this time step.
        CALL Diagn_Get ( HcoState, EOI, ThisDiagn, FLAG, RC, COL=PS )
-
-       ! IF (MAPL_am_I_Root()) THEN
-       !    IF ( RC == HCO_SUCCESS .and. FLAG == HCO_SUCCESS ) WRITE(*,*) "Got it! Name: ", TRIM(ThisDiagn%cName)
-       !    IF ( RC /= HCO_SUCCESS) WRITE(*,*) "Fail! RC: ", RC, "   Flag: ", FLAG
-       ! ENDIF
 
        IF ( RC /= HCO_SUCCESS ) THEN
            CALL HCO_ERROR( 'ERROR 0', RC, THISLOC=LOC )
@@ -175,23 +172,37 @@ CONTAINS
 
        ! 2D...
        IF ( ThisDiagn%SpaceDim == 2 ) THEN
-          CALL MAPL_GetPointer ( HcoState%EXPORT, Ptr2D, &
-             TRIM(ThisDiagn%cName), NotFoundOk=.TRUE., RC=STAT )
-          IF ( ASSOCIATED(Ptr2D) ) THEN
-             IF ( ASSOCIATED(ThisDiagn%Arr2D) ) THEN
-                Ptr2D = ThisDiagn%Arr2D%Val
-                !Ptr2D => ThisDiagn%Arr2D%Val
+          ! Use pure ESMF operations to get field from export state
+          ExportState = HcoState%EXPORT
+
+          ! Try to get the field from export state
+          CALL ESMF_StateGet(ExportState, itemName=TRIM(ThisDiagn%cName), field=Field, rc=lstat)
+          IF (lstat == ESMF_SUCCESS) THEN
+             ! Get the local array from the field
+             CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr2D, rc=lstat)
+
+             IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr2D)) THEN
+                IF ( ASSOCIATED(ThisDiagn%Arr2D) ) THEN
+                   Ptr2D = ThisDiagn%Arr2D%Val
+                ENDIF
              ENDIF
           ENDIF
 
        ! ... or 3D
        ELSEIF ( ThisDiagn%SpaceDim == 3 ) THEN
-          CALL MAPL_GetPointer ( HcoState%EXPORT, Ptr3D, &
-             TRIM(ThisDiagn%cName), NotFoundOk=.TRUE., RC=STAT )
-          IF ( ASSOCIATED(Ptr3D) ) THEN
-             IF ( ASSOCIATED(ThisDiagn%Arr3D) ) THEN
-                Ptr3D(:,:,:) = ThisDiagn%Arr3D%Val(:,:,HcoState%NZ:1:-1)
-                !Ptr3D => ThisDiagn%Arr3D%Val
+          ! Use pure ESMF operations to get field from export state
+          ExportState = HcoState%EXPORT
+
+          ! Try to get the field from export state
+          CALL ESMF_StateGet(ExportState, itemName=TRIM(ThisDiagn%cName), field=Field, rc=lstat)
+          IF (lstat == ESMF_SUCCESS) THEN
+             ! Get the local array from the field
+             CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr3D, rc=lstat)
+
+             IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr3D)) THEN
+                IF ( ASSOCIATED(ThisDiagn%Arr3D) ) THEN
+                   Ptr3D(:,:,:) = ThisDiagn%Arr3D%Val(:,:,HcoState%NZ:1:-1)
+                ENDIF
              ENDIF
           ENDIF
        ENDIF

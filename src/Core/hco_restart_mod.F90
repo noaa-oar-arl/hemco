@@ -74,8 +74,11 @@ MODULE HCO_RESTART_MOD
 !
 ! !PRIVATE MEMBER FUNCTIONS:
 !
-#if defined(ESMF_)
+#if defined(MAPL_ESMF)
   PRIVATE :: HCO_CopyFromIntnal_ESMF
+#endif
+#if defined(NUOPC_ESMF)
+  PRIVATE :: HCO_CopyFromIntnal_NUOPC
 #endif
 
   INTERFACE HCO_RestartDefine
@@ -323,8 +326,13 @@ CONTAINS
     ! Try to get from ESMF internal state
     ! ------------------------------------------------------------------
 #if defined(ESMF_)
+#if defined(NUOPC_ESMF)
+    CALL HCO_CopyFromIntnal_NUOPC( HcoState, TRIM(Name),   &
+                                  1,        FLD,      RC, Arr3D=Arr3D )
+#elif defined(MAPL_ESMF)
     CALL HCO_CopyFromIntnal_ESMF( HcoState, TRIM(Name),   &
                                   1,        FLD,      RC, Arr3D=Arr3D )
+#endif
     IF ( RC /= HCO_SUCCESS ) THEN
         CALL HCO_ERROR( 'ERROR 2', RC, THISLOC=LOC )
         RETURN
@@ -488,8 +496,13 @@ CONTAINS
     ! Try to get from ESMF internal state
     ! ------------------------------------------------------------------
 #if defined(ESMF_)
+#if defined(NUOPC_ESMF)
+    CALL HCO_CopyFromIntnal_NUOPC( HcoState, TRIM(Name),   &
+                                  1,        FLD,      RC, Arr2D=Arr2D )
+#elif defined(MAPL_ESMF)
     CALL HCO_CopyFromIntnal_ESMF( HcoState, TRIM(Name),   &
                                   1,        FLD,      RC, Arr2D=Arr2D )
+#endif
     IF ( RC /= HCO_SUCCESS ) THEN
         CALL HCO_ERROR( 'ERROR 4', RC, THISLOC=LOC )
         RETURN
@@ -644,8 +657,13 @@ CONTAINS
     WRITTEN = .FALSE.
 
 #if defined(ESMF_)
+#if defined(NUOPC_ESMF)
+    CALL HCO_CopyFromIntnal_NUOPC( HcoState, TRIM(Name), &
+                                  -1,       WRITTEN,    RC, Arr3D=Arr3D )
+#elif defined(MAPL_ESMF)
     CALL HCO_CopyFromIntnal_ESMF( HcoState, TRIM(Name), &
                                   -1,       WRITTEN,    RC, Arr3D=Arr3D )
+#endif
 #endif
 
     ! Pass to output
@@ -712,8 +730,13 @@ CONTAINS
     WRITTEN = .FALSE.
 
 #if defined(ESMF_)
+#if defined(NUOPC_ESMF)
+    CALL HCO_CopyFromIntnal_NUOPC( HcoState, TRIM(Name), &
+                                  -1,       WRITTEN,    RC, Arr2D=Arr2D )
+#elif defined(MAPL_ESMF)
     CALL HCO_CopyFromIntnal_ESMF( HcoState, TRIM(Name), &
                                   -1,       WRITTEN,    RC, Arr2D=Arr2D )
+#endif
 #endif
 
     ! Pass to output
@@ -726,7 +749,7 @@ CONTAINS
 
   END SUBROUTINE HCO_RestartWrite_2D
 !EOC
-#if defined(ESMF_)
+#if defined(MAPL_ESMF)
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
@@ -859,4 +882,145 @@ CONTAINS
   END SUBROUTINE HCO_CopyFromIntnal_ESMF
 !EOC
 #endif
+
+#if defined(NUOPC_ESMF)
+!------------------------------------------------------------------------------
+!                   Harmonized Emissions Component (HEMCO)                    !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !ROUTINE: HCO_CopyFromIntnal_NUOPC
+!
+! !DESCRIPTION: Subroutine HCO\_CopyFromIntnal\_NUOPC attempts to transfer
+! data to and from the ESMF/NUOPC internal state using pure ESMF operations.
+!\\
+!\\
+! !INTERFACE:
+!
+ SUBROUTINE HCO_CopyFromIntnal_NUOPC ( HcoState,  Name,    &
+                                       Direction, Found, RC, Arr2D, Arr3D )
+!
+! !USES:
+!
+     USE ESMF
+     USE HCO_STATE_MOD,   ONLY : Hco_State
+#ifdef ESMF_8
+     USE ESMF_FieldGetMod, ONLY : ESMF_FieldGet
+     USE ESMF_StateGetMod, ONLY : ESMF_StateGet
+#endif
+!
+! !ARGUMENTS:
+!
+     TYPE(HCO_State),     POINTER                 :: HcoState
+     CHARACTER(LEN=*),    INTENT(IN   )           :: Name
+     INTEGER,             INTENT(IN   )           :: Direction    ! 1: internal to Arr2D; -1: Arr2D to internal
+     LOGICAL,             INTENT(  OUT)           :: Found
+     INTEGER,             INTENT(INOUT)           :: RC
+     REAL(sp),            INTENT(INOUT), OPTIONAL :: Arr2D(HcoState%NX,HcoState%NY)
+     REAL(sp),            INTENT(INOUT), OPTIONAL :: Arr3D(HcoState%NX,HcoState%NY,HcoState%NZ)
+!
+! !REVISION HISTORY:
+!  14 Nov 2024 - HEMCO Team - Initial version for NUOPC compatibility
+!  See https://github.com/geoschem/hemco for complete history
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+!
+     INTEGER                      :: STAT, lstat
+     TYPE(ESMF_Field)             :: Field
+     TYPE(ESMF_State)             :: InternalState
+     REAL(ESMF_KIND_R4), POINTER  :: Ptr2D(:,:) => NULL()
+     REAL(ESMF_KIND_R4), POINTER  :: Ptr3D(:,:,:) => NULL()
+
+     ! ================================================================
+     ! HCO_CopyFromIntnal_NUOPC begins here
+     ! ================================================================
+
+     ! Init
+     Found = .FALSE.
+     Ptr2D => NULL()
+     Ptr3D => NULL()
+
+     ! Get internal state from HcoState
+     InternalState = HcoState%IMPORT ! Using IMPORT state as the internal state for NUOPC
+
+     ! Try to get field from internal state
+     IF ( PRESENT(Arr2D) ) THEN
+        ! Try to get 2D field
+        CALL ESMF_StateGet(InternalState, itemName=TRIM(Name), field=Field, rc=lstat)
+
+        IF (lstat == ESMF_SUCCESS) THEN
+           ! Get the local array from the field
+           CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr2D, rc=lstat)
+
+           IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr2D)) THEN
+              ! Make sure we can copy the data
+              IF (SIZE(Arr2D,1) == SIZE(Ptr2D,1) .AND. SIZE(Arr2D,2) == SIZE(Ptr2D,2)) THEN
+                 ! Transfer direction must be 1 or -1
+                 IF (Direction == 1) THEN
+                    ! Copy from internal state to output array
+                    ! Handle missing values appropriately
+                    WHERE (Ptr2D /= 1e15) ! Using common missing value representation
+                       Arr2D = Ptr2D
+                    ELSEWHERE
+                       Arr2D = 0.0_sp  ! Set missing values to 0
+                    END WHERE
+                 ELSEIF (Direction == -1) THEN
+                    ! Copy from output array to internal state (this would require a different approach in pure ESMF)
+                    ! For NUOPC, we might need to create/modify fields differently
+                    ! This is a simplified implementation
+                    Ptr2D = Arr2D
+                 ENDIF
+                 Found = .TRUE.
+              ENDIF
+           ENDIF
+        ENDIF
+
+        ! Cleanup
+        IF (ASSOCIATED(Ptr2D)) Ptr2D => NULL()
+     ENDIF
+
+     ! Try to get 3D field
+     IF ( PRESENT(Arr3D) .AND. .NOT. Found) THEN
+        CALL ESMF_StateGet(InternalState, itemName=TRIM(Name), field=Field, rc=lstat)
+
+        IF (lstat == ESMF_SUCCESS) THEN
+           ! Get the local array from the field
+           CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr3D, rc=lstat)
+
+           IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr3D)) THEN
+              ! Make sure we can copy the data
+              IF (SIZE(Arr3D,1) == SIZE(Ptr3D,1) .AND. &
+                  SIZE(Arr3D,2) == SIZE(Ptr3D,2) .AND. &
+                  SIZE(Arr3D,3) == SIZE(Ptr3D,3)) THEN
+                 ! Transfer direction must be 1 or -1
+                 IF (Direction == 1) THEN
+                    ! Copy from internal state to output array
+                    ! Handle missing values appropriately
+                    WHERE (Ptr3D /= 1e15)  ! Using common missing value representation
+                       Arr3D = Ptr3D
+                    ELSEWHERE
+                       Arr3D = 0.0_sp  ! Set missing values to 0
+                    END WHERE
+                 ELSEIF (Direction == -1) THEN
+                    ! Copy from output array to internal state
+                    Ptr3D = Arr3D
+                 ENDIF
+                 Found = .TRUE.
+              ENDIF
+           ENDIF
+        ENDIF
+
+        ! Cleanup
+        IF (ASSOCIATED(Ptr3D)) Ptr3D => NULL()
+     ENDIF
+
+     ! Return success
+     RC = HCO_SUCCESS
+
+   END SUBROUTINE HCO_CopyFromIntnal_NUOPC
+#endif
+
 END MODULE HCO_RESTART_MOD

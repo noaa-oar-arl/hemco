@@ -126,6 +126,9 @@ MODULE HCO_Error_Mod
   ! are read/stored in single precision.
 #if defined( MAPL_ESMF )
   REAL(sp), PARAMETER, PUBLIC :: HCO_MISSVAL = MAPL_UNDEF
+#elif defined( NUOPC_ESMF )
+  ! For NUOPC, define our own missing value to avoid MAPL dependency
+  REAL(sp), PARAMETER, PUBLIC :: HCO_MISSVAL = 1.e31_sp
 #else
   REAL(sp), PARAMETER, PUBLIC :: HCO_MISSVAL = -1.e31_sp
 #endif
@@ -184,9 +187,11 @@ CONTAINS
 ! !USES:
 !
 #if defined( ESMF_ )
-#include "MAPL_Generic.h"
     USE ESMF
+#if defined( MAPL_ESMF )
+#include "MAPL_Generic.h"
     USE MAPLBase_Mod
+#endif
 #endif
 !
 ! !INPUT PARAMETERS:
@@ -228,7 +233,11 @@ CONTAINS
 #if defined( ESMF_ )
     ! Get current thread number
     CALL ESMF_VMGetCurrent(VM, RC=STATUS)
+#if defined( MAPL_ESMF )
     CALL ESMF_VmGet( VM, localPET=localPET, __RC__ )
+#else
+    CALL ESMF_VmGet( VM, localPET=localPET, RC=STATUS )
+#endif
     WRITE(localPETchar,'(I4.4)') localPET
     MSG1 = 'HEMCO ERROR ['//TRIM(localPETchar)//']: '//TRIM(ErrMsg)
 #else

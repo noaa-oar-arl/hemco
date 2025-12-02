@@ -34,7 +34,7 @@ set(src_HCOCore
 )
 
 # Choose the appropriate HEMCO I/O library for the given interface.
-# Currently available: standard ("HEMCO default") and mapl (MAPL)
+# Currently available: standard ("HEMCO default"), mapl (MAPL), and esmf (ESMF/NUOPC)
 #
 # To add a future option:
 # elseif(HEMCO_INTERFACE STREQUAL future)
@@ -51,6 +51,9 @@ elseif(HEMCO_INTERFACE STREQUAL gcclassic)
 	list(APPEND src_HCOCore hcoio_read_std_mod.F90 hcoio_write_std_mod.F90)
 elseif(HEMCO_INTERFACE STREQUAL mapl)
 	list(APPEND src_HCOCore hcoio_read_mapl_mod.F90 hcoio_write_mapl_mod.F90)
+elseif(HEMCO_INTERFACE STREQUAL esmf)
+	list(APPEND src_HCOCore hcoio_read_esmf_mod.F90 hcoio_write_esmf_mod.F90)
+	# This ESMF interface module is used for NUOPC interfaces
 endif()
 
 add_library(HCO STATIC EXCLUDE_FROM_ALL
@@ -68,3 +71,4 @@ target_compile_options(HCO
 target_include_directories(HCO
 	INTERFACE ${HEMCO_BINARY_DIR}/mod
 )
+
