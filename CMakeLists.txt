@@ -39,7 +39,7 @@ add_library(HEMCOBuildProperties INTERFACE)
 #---------------------------------------------------------------------
 # Default compiler options
 #
-# HEMCO_Fortran_FLAGS_<COMPILER_ID> : common flags (all build types) 
+# HEMCO_Fortran_FLAGS_<COMPILER_ID> : common flags (all build types)
 # HEMCO_Fortran_FLAGS_<CONFIG>_<COMPILER_ID> : types-specific flags
 #
 # Valid COMPILER_ID: Intel and GNU
@@ -87,7 +87,7 @@ set(HEMCO_Fortran_FLAGS_RELWITHDEBINFO_GNU
    CACHE STRING "HEMCO compiler flags for build type relwithdebinfo with GNU compilers"
 )
 set(HEMCO_Fortran_FLAGS_DEBUG_GNU
-   -g -gdwarf-2 -gstrict-dwarf -O0 -Wall -Wextra -Wconversion -Warray-temporaries 
+   -g -gdwarf-2 -gstrict-dwarf -O0 -Wall -Wextra -Wconversion -Warray-temporaries
    -fcheck=array-temps -ffpe-trap=invalid,zero,overflow -finit-real=snan -fcheck=bounds -fcheck=pointer
    -fcheck=no-recursion
    CACHE STRING "HEMCO compiler flags for build type debug with GNU compilers"
@@ -268,9 +268,11 @@ if(NOT HEMCO_EXTERNAL_CONFIG)
     endif()
 
     # Determine which executables should be built
-    set(HEMCO_EXE_TARGETS "hemco_standalone"
-        CACHE STRING "Executable targets that get built as a part of \"all\""
-    )
+    if(NOT DEFINED HEMCO_EXE_TARGETS)
+        set(HEMCO_EXE_TARGETS "hemco_standalone"
+            CACHE STRING "Executable targets that get built as a part of \"all\""
+        )
+    endif()
 
     # Add code sanitization options (GNU Fortran only) to HEMCO standalone
     # We need to add these options to both compiler & linker.
@@ -327,7 +329,7 @@ if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
         INTERFACE $<LINK_ONLY:MAPL.base>
         INTERFACE $<LINK_ONLY:MAPL.generic>
     )
-    target_include_directories(HEMCOBuildProperties 
+    target_include_directories(HEMCOBuildProperties
         INTERFACE $<TARGET_PROPERTY:MAPL.base,INTERFACE_INCLUDE_DIRECTORIES>
         INTERFACE $<TARGET_PROPERTY:MAPL.generic,INTERFACE_INCLUDE_DIRECTORIES>
     )
@@ -341,6 +343,34 @@ if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
         CACHE STRING "HEMCO interface type (used to choose appropriate I/O option)"
     )
 endif()
+
+#-----------------------------------------------------------------------------
+# For HEMCO as submodule in a generic external superproject
+#-----------------------------------------------------------------------------
+if(HEMCO_EXTERNAL_CONFIG AND NOT GCCLASSIC_WRAPPER AND NOT MAPL_ESMF)
+    add_library(hco INTERFACE)
+endif()
+
+
+#- - - - - - - -
+# For HEMCO NUOPC/ESMF interface
+#- - - - - - - -
+set(NUOPC_ESMF OFF CACHE BOOL "Enable NUOPC/ESMF interface for HEMCO")
+
+if(NUOPC_ESMF)
+    target_compile_definitions(HEMCOBuildProperties
+        INTERFACE ESMF_ NUOPC_ESMF
+    )
+
+    # Specify the HEMCO interface being used, but do not overwrite MAPL
+    if(NOT HEMCO_INTERFACE STREQUAL "mapl")
+        set(HEMCO_INTERFACE
+            esmf
+            CACHE STRING "HEMCO interface type (used to choose appropriate I/O option)"
+        )
+    endif()
+endif()
+
 
 #-----------------------------------------------------------------------------
 # Write HEMCOBuildProperties's configuration to a file

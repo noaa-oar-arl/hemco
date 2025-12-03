@@ -1,19 +1,19 @@
 !BOC
-#if defined ( MAPL_ESMF )
+#if defined ( ESMF_ ) && !defined( HEMCO_STANDALONE )
 ! The 'standard' HEMCO I/O module is used for:
-! - GEOS-Chem High Performance / GCHP and GEOS (MAPL_ESMF)
+! - Pure ESMF applications without MAPL dependencies
 !EOC
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !MODULE: hcoio_read_mapl_mod.F90
+! !MODULE: hcoio_read_esmf_mod.F90
 !
-! !DESCRIPTION: Module HCOIO\_Read\_mod is the HEMCO interface for
-!  data reading within the MAPL library.
+! !DESCRIPTION: Module HCOIO\_Read\_ESMF\_Mod is the HEMCO interface for
+!  data reading within the pure ESMF environment (without MAPL dependencies).
 !
-!  This module implements the MAPL environment.
+!  This module implements the pure ESMF environment.
 !\\
 !\\
 ! !INTERFACE:
@@ -35,7 +35,7 @@ MODULE HCOIO_Read_Mod
   PUBLIC  :: HCOIO_CloseAll
 !
 ! !REVISION HISTORY:
-!  22 Aug 2013 - C. Keller   - Initial version
+!  14 Nov 2024 - B. Baker - Initial version based on pure ESMF
 !  See https://github.com/geoschem/hemco for complete history
 !EOP
 !------------------------------------------------------------------------------
@@ -47,12 +47,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOIO_DataRead (ESMF/MAPL version)
+! !IROUTINE: HCOIO_Read (ESMF version without MAPL)
 !
 ! !DESCRIPTION: Interface routine between ESMF and HEMCO to obtain
 ! the data array for a given HEMCO data container. The data is obtained
-! through the ExtData interface. The HEMCO source file attribute is taken
-! to identify the ExtData pointer name.
+! through the ESMF State interface. The HEMCO source file attribute is taken
+! to identify the ESMF field name.
 !\\
 !\\
 ! !INTERFACE:
@@ -62,10 +62,12 @@ CONTAINS
 ! !USES:
 !
     USE ESMF
-    USE MAPLBase_mod
+#ifdef ESMF_8
+    USE ESMF_FieldGetMod, ONLY : ESMF_FieldGet
+    USE ESMF_StateGetMod, ONLY : ESMF_StateGet
+#endif
     USE HCO_FILEDATA_MOD, ONLY : FileData_ArrInit
 
-# include "MAPL_Generic.h"
 !
 ! !INPUT PARAMETERS:
 !
@@ -77,7 +79,7 @@ CONTAINS
     INTEGER,          INTENT(INOUT)  :: RC
 !
 ! !REVISION HISTORY:
-!  28 Aug 2013 - C. Keller   - Initial version
+!  14 Nov 2024 - B. Baker - Initial version based on pure ESMF
 !  See https://github.com/geoschem/hemco for complete history
 !EOP
 !------------------------------------------------------------------------------
@@ -87,12 +89,13 @@ CONTAINS
 !
     INTEGER                    :: II, JJ, LL, TT
     INTEGER                    :: I, J, L, T
-    INTEGER                    :: STAT
+    INTEGER                    :: STAT, lstat
     REAL,             POINTER  :: Ptr3D(:,:,:)
     REAL,             POINTER  :: Ptr2D(:,:)
     TYPE(ESMF_State), POINTER  :: IMPORT
+    TYPE(ESMF_Field)           :: Field
     CHARACTER(LEN=255)         :: MSG
-    CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_READ (hcoio_read_mapl_mod.F90)'
+    CHARACTER(LEN=255), PARAMETER :: LOC = 'HCOIO_READ (hcoio_read_esmf_mod.F90)'
     CHARACTER(LEN=ESMF_MAXSTR) :: Iam
 
     !=================================================================
@@ -109,7 +112,10 @@ CONTAINS
 
     ! Point to ESMF IMPORT object
     IMPORT => HcoState%IMPORT
-    ASSERT_(ASSOCIATED(IMPORT))
+    IF (.NOT. ASSOCIATED(IMPORT)) THEN
+        CALL HCO_ERROR('HcoState%IMPORT not associated', RC, THISLOC=LOC)
+        RETURN
+    ENDIF
 
     ! Init pointers
     Ptr3D => NULL()
@@ -117,7 +123,7 @@ CONTAINS
 
     ! Verbose?
     IF ( HcoState%Config%doVerbose ) THEN
-       MSG = 'Reading from ExtData: ' // TRIM(Lct%Dct%Dta%ncFile)
+       MSG = 'Reading from ESMF State: ' // TRIM(Lct%Dct%Dta%ncFile)
        CALL HCO_MSG(MSG,LUN=HcoState%Config%hcoLogLUN)
     ENDIF
 
@@ -125,81 +131,90 @@ CONTAINS
     ! Read 3D data from ESMF
     !-----------------------------------------------------------------
     IF ( Lct%Dct%Dta%SpaceDim == 3 ) THEN
+       ! Get field from import state using the canonical field name
+       CALL ESMF_StateGet(IMPORT, itemName=TRIM(Lct%Dct%Dta%ncFile), field=Field, rc=lstat)
 
-       ! Get data
-       CALL MAPL_GetPointer( IMPORT, Ptr3D, &
-                             TRIM(Lct%Dct%Dta%ncFile), RC=STAT )
+       IF (lstat == ESMF_SUCCESS) THEN
+          ! Get the local array from the field
+          CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr3D, rc=lstat)
 
-       ! Check for MAPL error
-       IF( STAT /= ESMF_SUCCESS ) THEN
-          MSG = 'Cannot get xyz pointer: ' // TRIM(Lct%Dct%Dta%ncFile)
+          IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr3D)) THEN
+             ! Get array dimensions
+             II = SIZE(Ptr3D,1)
+             JJ = SIZE(Ptr3D,2)
+             LL = SIZE(Ptr3D,3)
+             TT = 1
+
+             ! Define HEMCO array if not yet defined.
+             IF ( .NOT. ASSOCIATED(Lct%Dct%Dta%V3) ) THEN
+                ! Use pointer if types match
+                CALL FileData_ArrInit( Lct%Dct%Dta, TT, 0, 0, 0, RC )
+                IF ( RC /= HCO_SUCCESS ) THEN
+                    CALL HCO_ERROR( 'ERROR 1', RC, THISLOC=LOC )
+                    RETURN
+                ENDIF
+             ENDIF
+
+             ! Pointer to data. HEMCO expects data to have surface level at
+             ! index 1 ('up').
+             Lct%Dct%Dta%V3(1)%Val => Ptr3D(:,:,LL:1:-1)
+
+             ! Verbose
+             IF ( HcoState%Config%doVerbose .AND. HcoState%amIRoot ) THEN
+                MSG = 'HEMCO: array pointer vertically flipped relative to ESMF Import ' // TRIM(Lct%Dct%Dta%ncFile)
+                CALL HCO_MSG(MSG)
+             ENDIF
+          ELSE
+             MSG = 'Cannot get 3D pointer: ' // TRIM(Lct%Dct%Dta%ncFile)
+             CALL HCO_ERROR( MSG, RC )
+             RETURN
+          ENDIF
+       ELSE
+          MSG = 'Cannot find 3D field: ' // TRIM(Lct%Dct%Dta%ncFile)
           CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
-
-       ! Get array dimensions
-       II = SIZE(Ptr3D,1)
-       JJ = SIZE(Ptr3D,2)
-       LL = SIZE(Ptr3D,3)
-       TT = 1
-
-       ! Define HEMCO array if not yet defined.
-       IF ( .NOT. ASSOCIATED(Lct%Dct%Dta%V3) ) THEN
-
-          ! Use pointer if types match
-          CALL FileData_ArrInit( Lct%Dct%Dta, TT, 0, 0, 0, RC )
-          !CALL FileData_ArrInit( Lct%Dct%Dta, TT, II, JJ, LL, RC )
-          IF ( RC /= HCO_SUCCESS ) THEN
-              CALL HCO_ERROR( 'ERROR 1', RC, THISLOC=LOC )
-              RETURN
-          ENDIF
-       ENDIF
-
-       ! Pointer to data. HEMCO expects data to have surface level at
-       ! index 1 ('up').
-       Lct%Dct%Dta%V3(1)%Val => Ptr3D(:,:,LL:1:-1)
-       !Lct%Dct%Dta%V3(1)%Val(:,:,:) = Ptr3D(:,:,LL:1:-1)
-
-       ! ewl debugging
-       if ( mapl_am_i_root() ) then
-          print *, "HEMCO: array pointer vertically flipped relative to MAPL Import ", trim(Lct%Dct%Dta%ncFile)
-       endif
 
     !-----------------------------------------------------------------
     ! Read 2D data from ESMF
     !-----------------------------------------------------------------
     ELSEIF ( Lct%Dct%Dta%SpaceDim == 2 ) THEN
 
-       ! Get data
-       CALL MAPL_GetPointer( IMPORT, Ptr2D, &
-                             TRIM(Lct%Dct%Dta%ncFile), RC=STAT )
+       ! Get field from import state using the canonical field name
+       CALL ESMF_StateGet(IMPORT, itemName=TRIM(Lct%Dct%Dta%ncFile), field=Field, rc=lstat)
 
-       ! Check for MAPL error
-       IF( STAT /= ESMF_SUCCESS ) THEN
-          MSG = 'Cannot get xy pointer: ' // TRIM(Lct%Dct%Dta%ncFile)
+       IF (lstat == ESMF_SUCCESS) THEN
+          ! Get the local array from the field
+          CALL ESMF_FieldGet(Field, localDe=0, farrayPtr=Ptr2D, rc=lstat)
+
+          IF (lstat == ESMF_SUCCESS .AND. ASSOCIATED(Ptr2D)) THEN
+             ! Get array dimensions
+             II = SIZE(Ptr2D,1)
+             JJ = SIZE(Ptr2D,2)
+             LL = 1
+             TT = 1
+
+             ! Define HEMCO array pointer if not yet defined
+             IF ( .NOT. ASSOCIATED(Lct%Dct%Dta%V2) ) THEN
+                CALL FileData_ArrInit( Lct%Dct%Dta, TT, 0, 0, RC )
+                IF ( RC /= HCO_SUCCESS ) THEN
+                    CALL HCO_ERROR( 'ERROR 2', RC, THISLOC=LOC )
+                    RETURN
+                ENDIF
+             ENDIF
+
+             ! Pointer to data
+             Lct%Dct%Dta%V2(1)%Val => Ptr2D
+          ELSE
+             MSG = 'Cannot get 2D pointer: ' // TRIM(Lct%Dct%Dta%ncFile)
+             CALL HCO_ERROR( MSG, RC )
+             RETURN
+          ENDIF
+       ELSE
+          MSG = 'Cannot find 2D field: ' // TRIM(Lct%Dct%Dta%ncFile)
           CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
-
-       ! Get array dimensions
-       II = SIZE(Ptr2D,1)
-       JJ = SIZE(Ptr2D,2)
-       LL = 1
-       TT = 1
-
-       ! Define HEMCO array pointer if not yet defined
-       IF ( .NOT. ASSOCIATED(Lct%Dct%Dta%V2) ) THEN
-          CALL FileData_ArrInit( Lct%Dct%Dta, TT, 0, 0, RC )
-          !CALL FileData_ArrInit( Lct%Dct%Dta, TT, II, JJ, RC )
-          IF ( RC /= HCO_SUCCESS ) THEN
-              CALL HCO_ERROR( 'ERROR 2', RC, THISLOC=LOC )
-              RETURN
-          ENDIF
-       ENDIF
-
-       ! Pointer to data
-       Lct%Dct%Dta%V2(1)%Val => Ptr2D
-       !Lct%Dct%Dta%V2(1)%Val = Ptr2D
 
     ENDIF
 
@@ -224,7 +239,7 @@ CONTAINS
 !
 ! !DESCRIPTION: Subroutine HCOIO\_CloseAll makes sure that there is no open
 ! netCDF file left in the stream. This is a stub as there is no such handling
-! within HEMCO for the MAPL environment, it is performed by MAPL.
+! within HEMCO for the ESMF environment, it is performed by ESMF.
 !\\
 !\\
 ! !INTERFACE:
@@ -240,7 +255,7 @@ CONTAINS
     INTEGER,          INTENT(INOUT)   :: RC
 !
 ! !REVISION HISTORY:
-!  24 Mar 2016 - C. Keller: Initial version
+!  14 Nov 2024 - B. Baker - Initial version based on pure ESMF
 !  See https://github.com/geoschem/hemco for complete history
 !EOP
 !------------------------------------------------------------------------------

@@ -11,6 +11,11 @@ if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
     add_subdirectory(MAPL_ESMF)
 endif()
 
+# if NUOPC ESMF:
+if(HEMCO_EXTERNAL_CONFIG AND NUOPC_ESMF)
+    add_subdirectory(NUOPC)
+endif()
+
 # if org GEOS:
 # option (BUILD_GEOS_INTERFACE FALSE)
 

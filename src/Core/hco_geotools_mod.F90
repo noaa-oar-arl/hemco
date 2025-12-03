@@ -539,7 +539,7 @@ CONTAINS
 
   END SUBROUTINE HCO_GetSUNCOS
 !EOC
-#if defined(ESMF_)
+#if defined(MAPL_ESMF)
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------

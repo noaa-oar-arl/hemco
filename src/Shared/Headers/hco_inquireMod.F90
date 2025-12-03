@@ -1,6 +1,6 @@
-#ifdef ESMF_
+#if defined(ESMF_) && defined(MAPL_ESMF)
 ! We only need to refer to this include file if we are connecting
-! to the GEOS-5 GCM via the ESMF/MAPL framework (bmy, 8/3/12)
+! to the GEOS-5 GCM via the ESMF/MAPL framework
 #include "MAPL_Generic.h"
 #endif
 !------------------------------------------------------------------------
@@ -19,11 +19,13 @@ MODULE HCO_inquireMod
 !
 ! !USES:
 !
-#ifdef ESMF_
-  ! We only need to refer to these modules if we are connecting
-  ! to the GEOS-5 GCM via the ESMF/MAPL framework (bmy, 8/3/12)
-  USE ESMF
-  USE MAPLBase_Mod
+#if defined(ESMF_) && defined(MAPL_ESMF)
+   ! For MAPL/ESMF framework
+   USE ESMF
+   USE MAPLBase_Mod
+#elif defined(ESMF_) && !defined(MAPL_ESMF)
+   ! For pure ESMF framework (without MAPL)
+   USE ESMF
 #endif
 
   IMPLICIT NONE
@@ -81,10 +83,10 @@ MODULE HCO_inquireMod
     LOGICAL                    :: found         ! Detect unused logical unit
     LOGICAL                    :: open          ! Is open?
 
-#ifdef ESMF_
-    CHARACTER(LEN=ESMF_MAXSTR) :: Iam
+#if defined(ESMF_) && defined(MAPL_ESMF)
+     CHARACTER(LEN=ESMF_MAXSTR) :: Iam
 #else
-    CHARACTER(LEN=255)         :: Iam
+     CHARACTER(LEN=255)         :: Iam
 #endif
 !
 ! !DEFINED PARAMETERS
@@ -118,8 +120,13 @@ MODULE HCO_inquireMod
        PRINT *,TRIM( Iam ) // ": No available logical units"
     ENDIF
 
-#ifdef ESMF_
-    VERIFY_(status)
+#if defined(ESMF_) && defined(MAPL_ESMF)
+     VERIFY_(status)
+#elif defined(ESMF_) && !defined(MAPL_ESMF)
+     ! For pure ESMF, we don't have MAPL macros, so use standard check
+     IF (status /= 0) THEN
+        PRINT *,TRIM( Iam ) // ": Error status /= 0"
+     ENDIF
 #endif
 
   END FUNCTION findFreeLUN
